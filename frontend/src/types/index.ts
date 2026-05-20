@@ -16,6 +16,7 @@ export interface TraceRecord {
   node_id: string;
   agent: string;
   timestamp: string;
+  input_refs: Record<string, unknown>;
   output: Record<string, unknown>;
   reasoning_chain: ReasoningStep[];
   sources: TraceSource[];
