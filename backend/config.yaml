@@ -1,0 +1,31 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+
+llm:
+  default: claude
+  adapters:
+    claude:
+      type: claude
+      model: claude-sonnet-4-6-20250514
+      api_key: ${ANTHROPIC_API_KEY}
+    openai:
+      type: openai
+      model: gpt-4o
+      api_key: ${OPENAI_API_KEY}
+    local:
+      type: local
+      endpoint: http://localhost:11434
+      model: llama3
+  agent_bindings:
+    TaskParser: claude
+    Analyst: claude
+    Writer: openai
+    Reviewer: claude
+    Collector: local
+
+dag:
+  max_feedback_rounds: 3
+  node_timeout_seconds: 300
+  max_retries: 3
