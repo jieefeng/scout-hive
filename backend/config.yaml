@@ -18,6 +18,10 @@ llm:
       type: local
       endpoint: http://localhost:11434
       model: llama3
+    bailian:
+      type: bailian
+      model: qwen-plus
+      api_key: ${DASHSCOPE_API_KEY}
   agent_bindings:
     TaskParser: claude
     Analyst: claude
