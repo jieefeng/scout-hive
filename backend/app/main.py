@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import load_config
+from app.engine.state_manager import StateManager
+from app.engine.event_bus import EventBus
+from app.api import tasks, websocket
 
 
 def create_app() -> FastAPI:
@@ -21,6 +24,14 @@ def create_app() -> FastAPI:
     )
 
     app.state.config = config
+
+    state_manager = StateManager()
+    event_bus = EventBus()
+
+    tasks.init_router(state_manager)
+    websocket.init_router(event_bus)
+    app.include_router(tasks.router)
+    app.include_router(websocket.router)
 
     @app.get("/health")
     async def health():
