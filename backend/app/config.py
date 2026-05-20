@@ -17,6 +17,10 @@ class LLMConfig(BaseModel):
     agent_bindings: dict[str, str]
 
     def model_post_init(self, __context) -> None:
+        if self.default not in self.adapters:
+            raise ValueError(
+                f"Default adapter '{self.default}' not in {list(self.adapters.keys())}"
+            )
         for agent, adapter_name in self.agent_bindings.items():
             if adapter_name not in self.adapters:
                 raise ValueError(
