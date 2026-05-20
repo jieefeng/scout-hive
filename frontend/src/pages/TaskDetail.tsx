@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTaskStore } from '../stores/taskStore';
+import DagViewer from '../components/DagViewer';
 
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -19,7 +20,7 @@ export default function TaskDetail() {
       <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
         <div style={{ flex: 1, border: '1px solid #ddd', padding: '1rem', borderRadius: '8px' }}>
           <h2>DAG 执行图</h2>
-          <p>（React Flow 组件将在后续任务中实现）</p>
+          <DagViewer nodeStates={currentTask.node_states} onNodeClick={(id) => console.log('Clicked node:', id)} />
         </div>
         <div style={{ flex: 1, border: '1px solid #ddd', padding: '1rem', borderRadius: '8px' }}>
           <h2>Agent 详情</h2>
