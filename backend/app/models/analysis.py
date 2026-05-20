@@ -1,9 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class Confidence(BaseModel):
-    score: float = 0.0
-    level: str = "medium"
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    level: Literal["high", "medium", "low"] = "medium"
     uncertainty_factors: list[str] = Field(default_factory=list)
 
 
