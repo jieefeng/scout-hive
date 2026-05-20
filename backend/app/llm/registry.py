@@ -18,6 +18,9 @@ class LLMRegistry:
             return OpenAIAdapter(api_key=cfg.api_key or "", model=cfg.model)
         elif cfg.type == "local":
             return LocalAdapter(endpoint=cfg.endpoint or "http://localhost:11434", model=cfg.model)
+        elif cfg.type == "bailian":
+            from app.llm.bailian_adapter import BailianAdapter
+            return BailianAdapter(api_key=cfg.api_key or "", model=cfg.model)
         else:
             raise ValueError(f"Unknown adapter type: {cfg.type}")
 

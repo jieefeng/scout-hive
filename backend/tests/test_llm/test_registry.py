@@ -28,3 +28,32 @@ def test_registry_agent_binding():
     assert adapter.model == "mistral"
     default_adapter = registry.get_for_agent("Writer")
     assert default_adapter.model == "llama3"
+
+
+def test_registry_bailian_creation():
+    config = LLMConfig(
+        default="bailian",
+        adapters={"bailian": LLMAdapterConfig(type="bailian", model="qwen-plus", api_key="sk-test")},
+        agent_bindings={},
+    )
+    registry = LLMRegistry(config)
+    adapter = registry.get("bailian")
+    from app.llm.bailian_adapter import BailianAdapter
+    assert isinstance(adapter, BailianAdapter)
+    assert adapter.model == "qwen-plus"
+
+
+def test_registry_bailian_agent_binding():
+    config = LLMConfig(
+        default="default_adapter",
+        adapters={
+            "default_adapter": LLMAdapterConfig(type="local", model="llama3"),
+            "bailian": LLMAdapterConfig(type="bailian", model="qwen-max", api_key="sk-test"),
+        },
+        agent_bindings={"Collector": "bailian"},
+    )
+    registry = LLMRegistry(config)
+    adapter = registry.get_for_agent("Collector")
+    from app.llm.bailian_adapter import BailianAdapter
+    assert isinstance(adapter, BailianAdapter)
+    assert adapter.model == "qwen-max"
