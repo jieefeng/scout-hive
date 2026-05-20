@@ -23,3 +23,10 @@ class LLMAdapter(ABC):
     @abstractmethod
     async def stream_chat(self, messages: list[Message], **kwargs) -> AsyncIterator[str]:
         ...
+
+
+class LLMError(Exception):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"[{code}] {message}")
