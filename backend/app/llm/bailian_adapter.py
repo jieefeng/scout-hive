@@ -20,3 +20,14 @@ class BailianAdapter(OpenAIAdapter):
             raise LLMError("bailian_rate_limit", "百练平台限流，请稍后重试")
         except openai.APIStatusError as e:
             raise LLMError("bailian_api", f"百练 API 错误: {e.status_code}")
+
+    async def stream_chat(self, messages, **kwargs):
+        try:
+            async for chunk in super().stream_chat(messages, **kwargs):
+                yield chunk
+        except openai.AuthenticationError:
+            raise LLMError("bailian_auth", "DASHSCOPE_API_KEY 无效或未设置")
+        except openai.RateLimitError:
+            raise LLMError("bailian_rate_limit", "百练平台限流，请稍后重试")
+        except openai.APIStatusError as e:
+            raise LLMError("bailian_api", f"百练 API 错误: {e.status_code}")
