@@ -16,6 +16,14 @@ class LLMConfig(BaseModel):
     adapters: dict[str, LLMAdapterConfig]
     agent_bindings: dict[str, str]
 
+    def model_post_init(self, __context) -> None:
+        for agent, adapter_name in self.agent_bindings.items():
+            if adapter_name not in self.adapters:
+                raise ValueError(
+                    f"Agent '{agent}' is bound to adapter '{adapter_name}', "
+                    f"but only {list(self.adapters.keys())} are defined"
+                )
+
 
 class DAGConfig(BaseModel):
     max_feedback_rounds: int = 3
@@ -46,7 +54,7 @@ def load_config(config_path: str | None = None) -> AppConfig:
     def resolve_env(obj):
         if isinstance(obj, str) and obj.startswith("${") and obj.endswith("}"):
             env_key = obj[2:-1]
-            return os.environ.get(env_key, "")
+            return os.environ.get(env_key)  # None if missing, not empty string
         elif isinstance(obj, dict):
             return {k: resolve_env(v) for k, v in obj.items()}
         elif isinstance(obj, list):
