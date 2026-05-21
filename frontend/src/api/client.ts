@@ -1,5 +1,5 @@
-const API_BASE = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws';
+const API_BASE = 'http://localhost:7007';
+const WS_URL = 'ws://localhost:7007/ws';
 
 export async function fetchTasks() {
   const resp = await fetch(`${API_BASE}/api/tasks/`);

@@ -1,33 +1,21 @@
 server:
   host: "0.0.0.0"
-  port: 8000
+  port: 7007
   debug: true
 
 llm:
-  default: claude
+  default: bailian
   adapters:
-    claude:
-      type: claude
-      model: claude-sonnet-4-6-20250514
-      api_key: ${ANTHROPIC_API_KEY}
-    openai:
-      type: openai
-      model: gpt-4o
-      api_key: ${OPENAI_API_KEY}
-    local:
-      type: local
-      endpoint: http://localhost:11434
-      model: llama3
     bailian:
       type: bailian
-      model: qwen-plus
+      model: qwen3.6-plus-2026-04-02
       api_key: ${DASHSCOPE_API_KEY}
   agent_bindings:
-    TaskParser: claude
-    Analyst: claude
-    Writer: openai
-    Reviewer: claude
-    Collector: local
+    TaskParser: bailian
+    Analyst: bailian
+    Writer: bailian
+    Reviewer: bailian
+    Collector: bailian
 
 dag:
   max_feedback_rounds: 3
