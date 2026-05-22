@@ -4,9 +4,9 @@
 
 ## 1. 设计原则
 
-- **Schema 是配置文件，不是子系统。** 不需要 Registry、Patch、热更新机制。JSON 文件存储，启动加载，API 读写。
-- **模型只定义"要什么"，不定义"怎么组织"和"信不信"。** Agent 自主决定输出结构和置信度评估。
-- **硬约束用枚举和数值范围，软引导用自然语言。** `target_platform` 是硬约束，`description` 是软引导。
+- **Schema 是配置文件，不是子系统。** 不需要 Registry、Patch、热更新机制。JSON 文件存储 + 代码常量 fallback，启动加载，API 读写。
+- **MVP 优先刚性约束。** 用枚举控制输出格式和采集目标，少用自然语言"请求" Agent 做事。
+- **硬约束用枚举和数值范围，软引导用自然语言。** `output_type` 和 `target_platform` 是硬约束，`description` 是软引导。
 - **失败不阻断。** 数据不足时降级输出、明确标注，不重试死循环、不报错崩溃。
 
 ---
@@ -19,20 +19,15 @@
 from pydantic import BaseModel, Field
 from typing import Literal
 
-Platform = Literal[
-    "any",
-    "official_website",
-    "app_store",
-    "github",
-    "pricing_page",
-    "g2_reviews",
-]
+Platform = Literal["any", "official_website"]
+OutputType = Literal["auto", "table", "paragraph"]
 
 class DimensionSchema(BaseModel):
     name: str
     description: str = ""
     keywords: list[str] = Field(default_factory=list)
     target_platform: Platform = "any"
+    output_type: OutputType = "auto"
     min_sources: int = Field(default=1, ge=1)
     preferred_sources: list[str] = Field(default_factory=list)
 ```
@@ -61,9 +56,10 @@ class SchemaDefinition(BaseModel):
 | 字段 | 使用者 | 作用 | 约束类型 |
 |------|--------|------|----------|
 | `name` | 全部 Agent | 维度标识 | — |
-| `description` | Collector, Writer | 理解分析意图、决定输出结构 | 软引导（自然语言） |
+| `description` | Collector, Writer | 理解分析意图、补充上下文 | 软引导（自然语言） |
 | `keywords` | Collector | 搜索关键词 | 软引导 |
-| `target_platform` | Collector | 必须去哪采集（含工具选择） | 硬约束（枚举 + 映射表） |
+| `target_platform` | Collector | 必须去哪采集 | 硬约束（枚举） |
+| `output_type` | Writer | 输出结构：表格/段落/自动 | 硬约束（枚举） |
 | `min_sources` | Analyst, Reviewer | 证据数量底线 | 硬约束（数值） |
 | `preferred_sources` | Collector | 优先来源加权 | 软引导 |
 
@@ -73,7 +69,7 @@ class SchemaDefinition(BaseModel):
 |----------|---------|------|
 | `CustomFieldHint` | 砍掉 | MVP 无人使用，等需求验证 |
 | `EvidenceRequirements` 独立类 | 砍掉（字段扁平化） | 仅 2 字段，不需要独立模型 |
-| `output_format` / `analysis_structure` | 砍掉 | Writer 根据 description 自主决定 |
+| `output_format` / `analysis_structure` | 改为 `output_type: Literal["auto", "table", "paragraph"]` | 自然语言不可靠，MVP 需要枚举硬约束 |
 | `confidence_baseline` | 砍掉 | LLM 置信度打分不可靠，`min_sources` 已足够 |
 | `fallback_query` | 砍掉 | `description` 本身即是兜底查询 |
 | `DimensionSchemaInput` + `from_llm()` | 砍掉 | Schema 是用户配置，非 LLM 输出 |
@@ -81,89 +77,71 @@ class SchemaDefinition(BaseModel):
 | `SchemaRegistry` 类 | 砍掉 | JSON 文件 CRUD 替代 |
 | `source_hints: list[str]` | 改为 `target_platform: Platform` | 硬约束替代软提示 |
 | `data_sources` | 砍掉 | 与 `target_platform` 高度重叠，映射表已决定工具选择 |
+| `target_platform` (6 值) | 砍为 2 值 (`any`, `official_website`) | 专用平台 API 未实现，MVP 先跑通通用搜索 |
 
 ---
 
 ## 3. target_platform 映射表
 
-每个枚举值必须对应 Collector 的具体行为。这是设计文档的硬性要求——有枚举就必须有映射。
+MVP 阶段只开放两个枚举值，其余专用平台（app_store、github 等）待 API 工具实现后再加。
 
 ### 3.1 映射表
 
 | target_platform | Collector 行为 | 搜索模板 |
 |-----------------|---------------|----------|
 | `any` | 通用搜索，不限制来源 | `{keywords} {competitor_name}` |
-| `official_website` | 优先爬取竞品官网，搜索引擎限定 site 域名 | `site:{competitor_domain} {keywords}` |
-| `app_store` | 调用 App Store API 或爬取应用商店页面 | 七麦数据 / App Store Search API / Google Play Store |
-| `github` | 搜索 GitHub 组织/仓库 | `site:github.com/{org} {keywords}` |
-| `pricing_page` | 定位官网定价页 | `site:{competitor_domain} inurl:pricing OR inurl:price OR inurl:plans` |
-| `g2_reviews` | 爬取 G2 评测页（或类似第三方评测平台） | `site:g2.com/products/{competitor_name} reviews` |
+| `official_website` | 限定竞品官网域名搜索 | `site:{competitor_domain} {keywords}` |
 
 ### 3.2 实现要求
 
-Collector Agent 的 prompt 中必须包含此映射逻辑。当 `target_platform != "any"` 时，Collector 必须使用对应的搜索模板，不得自由发挥。若指定平台无结果，标记维度为 `data_insufficient`，不得退化为通用搜索。
+Collector Agent 的 prompt 中必须包含此映射逻辑。当 `target_platform = "official_website"` 时，Collector 必须使用 `site:` 限定域名，不得自由发挥。若指定平台无结果，标记维度为 `data_insufficient`，不得退化为通用搜索。
 
-### 3.3 平台特殊说明
+### 3.3 未来扩展
 
-- **app_store**: 不通过通用搜索引擎，使用专用 API/爬虫。若无可用 API，标记为 `data_insufficient`。
-- **pricing_page**: 搜索范围锁定官网域名。若竞品无公开定价（如"联系我们获取报价"），在 finding 中明确记录此事实，而非标记为数据不足。
+以下平台待对应 API/爬虫实现后再加入枚举：
+
+| 平台 | 需要的工具 | 优先级 |
+|------|-----------|--------|
+| `app_store` | 七麦数据 API / App Store Search API | P1 |
+| `github` | GitHub Search API | P2 |
+| `pricing_page` | 官网 pricing 页面爬虫 | P2 |
+| `g2_reviews` | G2 页面爬虫 | P3 |
+
+新平台加入时，必须同步补充此映射表中的"Collector 行为"和"搜索模板"列。
 
 ---
 
-## 4. description 编写指南（Writer Agent）
+## 4. description 和 output_type 使用指南
 
-`description` 替代了 `analysis_structure`，用自然语言告诉 Writer 期望的输出形式。
+`output_type` 控制输出结构（刚性），`description` 补充分析意图（柔性）。Writer 必须遵守 `output_type`，同时参考 `description` 中的上下文。
 
-### 4.1 范例
+### 4.1 output_type 行为契约
 
-**好的 description（两段式）：**
+| output_type | Writer 行为 | 适用场景 |
+|-------------|------------|----------|
+| `auto` | 自主决定输出结构（根据数据特征选表格或段落） | 用户不确定输出格式 |
+| `table` | 必须输出表格（对比表/参数矩阵），找不到可比维度则标注"无可比数据" | 定价对比、功能对比 |
+| `paragraph` | 必须输出段落叙述，不得生成表格 | 深度分析、趋势解读 |
 
-> [分析目标]
-> 对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。
->
-> [输出要求]
-> 若有明确的参数差异，优先用表格呈现各档位对应关系；若某竞品无公开定价，明确注明"未公开"并记录获取报价的途径。每个价格数据点需附带来源引用。
+### 4.2 description 编写范例
 
-> [分析目标]
-> 分析各竞品在移动端的用户评分、近期差评趋势（近 3 个月）及官方响应情况。区分 iOS 和 Android 平台数据。
->
-> [输出要求]
-> 优先引用可量化的评分和排名数据。若某平台无足够评分，注明"数据不足"而非跳过该平台。
+**好的 description：**
+
+> "对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。若某竞品无公开定价，注明'未公开'并记录获取报价途径。"
+
+> "分析各竞品在移动端的用户评分、近期差评趋势（近 3 个月）及官方响应情况。区分 iOS 和 Android 平台数据。优先引用量化评分和排名。"
 
 **不好的 description：**
 
-> "分析定价。" — 太简略，Writer 不知道要关注什么；缺少 [输出要求] 段
+> "分析定价。" — 太简略，Writer 不知道要关注什么
 
-> "分析定价策略，包括免费版、专业版、企业版，必须以表格形式输出。" — 过于死板，Writer 可能强行套模板；不应出现"必须"
+> "必须以表格列出定价档位然后写一段分析。" — 越权指挥，output_type 已管结构
 
-### 4.2 编写原则
+### 4.3 编写原则
 
-1. **说清楚关注点**（价格档位、功能差异、用户评分），不限制具体格式
+1. **说清楚关注点**（价格档位、功能差异、用户评分）
 2. **允许异常情况**（无公开定价、数据缺失），给出处理方式
-3. **指明优先级**（"优先引用量化数据"、"若有明确差异请用表格"）
-4. **避免死模板**（不要写"必须以表格形式输出"）
-
-### 4.3 结构化要求（强制）
-
-为保证 Writer Agent 在不同运行中产出结构一致，每个 description 必须包含两段：
-
-```
-[分析目标]
-<要回答什么问题、关注什么维度的差异>
-
-[输出要求]
-<数据如何组织：优先表格还是段落、异常情况如何处理、引用格式要求>
-```
-
-**完整范例（符合两段式规范）：**
-
-> [分析目标]
-> 对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。
->
-> [输出要求]
-> 若有明确的参数差异，优先用表格呈现各档位对应关系；若某竞品无公开定价，明确注明"未公开"并记录获取报价的途径。每个价格数据点需附带来源引用。
-
-两段式结构不约束具体措辞，但 Writer 通过两段语义锚点（目标/要求）能稳定解析意图，降低不同运行间的输出格式漂移。
+3. **不指定格式**（格式由 `output_type` 控制，description 只管内容）
 
 ---
 
@@ -221,9 +199,39 @@ backend/schemas/
 
 ### 6.2 加载机制
 
-- 启动时扫描 `backend/schemas/` 目录，加载所有 JSON 文件
-- 运行时通过 API 读取/写入文件
-- "热更新" = 调用 reload API 端点重新扫描目录
+- **启动时**：先加载代码内置默认模板（见 6.3），再扫描 `backend/schemas/` 目录。目录中同 `schema_id` 的文件覆盖内置模板
+- **目录不存在或为空**：仅使用内置模板，系统正常运行
+- **运行时**：通过 API 读取/写入文件
+- **"热更新"**：调用 reload API 端点重新扫描目录
+
+```python
+# backend/app/schema/defaults.py — 内置默认模板（代码常量 fallback）
+
+DEFAULT_SCHEMAS: list[dict] = [
+    {
+        "schema_id": "default-general",
+        "name": "通用竞品分析模板",
+        "version": "1.0",
+        "groups": [
+            {
+                "name": "产品功能",
+                "description": "核心功能维度对比",
+                "dimensions": [
+                    {
+                        "name": "功能对比",
+                        "description": "对比各竞品的核心功能差异与优势。若某竞品缺少某项功能请明确标注。",
+                        "keywords": ["功能", "特性", "支持"],
+                        "target_platform": "official_website",
+                        "output_type": "table",
+                        "min_sources": 2,
+                        "preferred_sources": ["官网产品页", "官方文档"]
+                    }
+                ]
+            }
+        ]
+    }
+]
+```
 
 ### 6.3 示例文件
 
@@ -239,9 +247,10 @@ backend/schemas/
       "dimensions": [
         {
           "name": "功能对比",
-          "description": "[分析目标]\n对比各竞品的核心功能差异与优势。\n\n[输出要求]\n若有明确的参数差异优先用表格呈现，若某竞品缺少某项功能请明确标注。每个功能点需附带来源引用。",
+          "description": "对比各竞品的核心功能差异与优势。若某竞品缺少某项功能请明确标注。每个功能点需附带来源引用。",
           "keywords": ["功能", "特性", "支持"],
           "target_platform": "official_website",
+          "output_type": "table",
           "min_sources": 2,
           "preferred_sources": ["官网产品页", "官方文档"]
         }
@@ -269,7 +278,7 @@ Schema（静态模板）和 TaskDAG（任务实例）是分离的两层：
 
 class Competitor(BaseModel):
     name: str           # "飞书"
-    domain: str = ""    # "feishu.cn"（可选，用于 target_platform 域名约束）
+    domain: str         # "feishu.cn"（必填，target_platform=official_website 时使用）
 
 class TaskDAG(BaseModel):
     task_id: str
@@ -288,39 +297,22 @@ class TaskDAG(BaseModel):
 用户操作                           系统行为
 ───────                           ──────
 1. 前端展示 Schema 模板列表        GET /api/schemas
-2. 用户选择模板 + 填写竞品名单     前端组装请求
+2. 用户选择模板 + 填写竞品名单     域名必填（见 7.4）
 3. 提交任务                        POST /api/tasks { schema_id, competitors }
-4. Orchestrator 加载 Schema        读 backend/schemas/{schema_id}.json
-5. 竞品域名解析                    将竞品名称映射为官网域名（见 7.4）
-6. 展开维度 → 生成 DAG 节点        每个 DimensionSchema → Collector/Analyst/Writer 任务
-7. Collector 按 target_platform    将域名注入搜索模板，执行定向采集
-8. Analyst 按 min_sources 校验     降级或正常输出
-9. Writer 按 description 组织      自然语言驱动输出结构
+4. Orchestrator 加载 Schema        读内置默认模板 → 目录 JSON 覆盖
+5. 展开维度 → 生成 DAG 节点        每个 DimensionSchema → Collector/Analyst/Writer 任务
+6. Collector 按 target_platform    注入 competitor.domain，执行定向采集
+7. Analyst 按 min_sources 校验     降级或正常输出
+8. Writer 按 output_type 约束      table/paragraph/auto 决定输出结构
 ```
 
-### 7.4 竞品域名解析（关键前置步骤）
+### 7.4 竞品域名（必填约束）
 
-`target_platform` 为 `official_website` 或 `pricing_page` 时，Collector 需要 `{competitor_domain}` 来构造搜索模板。但用户输入的竞品名单是名称（如"飞书"），不是域名。
+`target_platform = "official_website"` 时，Collector 需要 `competitor.domain` 构造 `site:` 搜索模板。**MVP 阶段不允许 AI 猜测域名**——域名必须由用户提供。
 
-**解析策略（三级回退）：**
-
-1. **用户显式提供**（优先）：前端允许用户填写竞品时附带域名，如 `{"name": "飞书", "domain": "feishu.cn"}`
-2. **Orchestrator 内置映射表**（次选）：维护常见竞品名称→域名映射，如 `{"飞书": "feishu.cn", "钉钉": "dingtalk.com"}`
-3. **Collector 自主搜索**（兜底）：Collector 先用 `{competitor_name} 官网` 搜索一次，从首页 URL 提取域名，再执行正式的定向采集
-
-**TaskDAG 模型调整：**
-
-`competitors` 从 `list[str]` 升级为结构：
-
-```python
-class Competitor(BaseModel):
-    name: str           # "飞书"
-    domain: str = ""    # "feishu.cn"（可选，未填则走回退策略）
-
-# TaskDAG.competitors: list[Competitor]
-```
-
-若 `competitor.domain` 为空且 `target_platform` 需要域名，Collector 按回退策略 2→3 依次尝试，最终仍无域名则将该维度标记为 `data_insufficient`。
+- 前端：竞品名称 + 域名两个输入框，域名校验格式（含 `.` 的合法域名）
+- 后端：`Competitor.domain` 为必填字段（Pydantic `Field(min_length=1)`）
+- 若用户确实不知道竞品官网，选择 `target_platform: "any"` 走通用搜索
 
 ---
 
@@ -389,9 +381,10 @@ def validate_traceability(analysis_result: AnalysisResult) -> list[str]:
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| 存储方案 | JSON 文件 | MVP 够用，持久化，零依赖 |
+| 存储方案 | JSON 文件 + 代码常量 fallback | 可 API 操作，目录缺失仍可运行 |
 | Schema 更新方式 | 整文件替换 | 避免手写 JSON Patch 的脆弱性 |
-| 输出结构控制 | description 自然语言 | 把决策权还给 Writer Agent |
+| 输出结构控制 | `output_type` 枚举（硬约束）+ `description` 补充（软引导） | MVP 需要刚性约束保证稳定性 |
 | 质量门禁 | min_sources（硬约束） | 比置信度打分更可靠、更可操作 |
-| 采集目标约束 | target_platform 枚举 + 映射表 | 硬约束替代软提示，Collector 不可自由发挥 |
+| 采集目标约束 | `target_platform` 仅 2 值（any/official_website） | 专用平台 API 未就绪，MVP 先跑通通用搜索 |
+| 竞品域名 | 用户必填，无 AI 兜底 | MVP 不允许 AI 猜测域名 |
 | 失败处理 | 降级标注，不阻断 | 部分数据 > 零数据 > 卡死 |
