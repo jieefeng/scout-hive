@@ -33,7 +33,6 @@ class DimensionSchema(BaseModel):
     description: str = ""
     keywords: list[str] = Field(default_factory=list)
     target_platform: Platform = "any"
-    data_sources: list[str] = Field(default_factory=list)
     min_sources: int = Field(default=1, ge=1)
     preferred_sources: list[str] = Field(default_factory=list)
 ```
@@ -64,8 +63,7 @@ class SchemaDefinition(BaseModel):
 | `name` | 全部 Agent | 维度标识 | — |
 | `description` | Collector, Writer | 理解分析意图、决定输出结构 | 软引导（自然语言） |
 | `keywords` | Collector | 搜索关键词 | 软引导 |
-| `target_platform` | Collector | 必须去哪采集 | 硬约束（枚举） |
-| `data_sources` | Collector | 数据源类型筛选 | 软引导 |
+| `target_platform` | Collector | 必须去哪采集（含工具选择） | 硬约束（枚举 + 映射表） |
 | `min_sources` | Analyst, Reviewer | 证据数量底线 | 硬约束（数值） |
 | `preferred_sources` | Collector | 优先来源加权 | 软引导 |
 
@@ -82,6 +80,7 @@ class SchemaDefinition(BaseModel):
 | `SchemaChange` / `SchemaPatch` | 砍掉 | 整文件替换，不搞增量补丁 |
 | `SchemaRegistry` 类 | 砍掉 | JSON 文件 CRUD 替代 |
 | `source_hints: list[str]` | 改为 `target_platform: Platform` | 硬约束替代软提示 |
+| `data_sources` | 砍掉 | 与 `target_platform` 高度重叠，映射表已决定工具选择 |
 
 ---
 
@@ -117,17 +116,25 @@ Collector Agent 的 prompt 中必须包含此映射逻辑。当 `target_platform
 
 ### 4.1 范例
 
-**好的 description：**
+**好的 description（两段式）：**
 
-> "对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。若有明确的参数差异，请用表格呈现；若某竞品无公开定价，请明确注明'未公开'并记录获取报价的途径。"
+> [分析目标]
+> 对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。
+>
+> [输出要求]
+> 若有明确的参数差异，优先用表格呈现各档位对应关系；若某竞品无公开定价，明确注明"未公开"并记录获取报价的途径。每个价格数据点需附带来源引用。
 
-> "分析各竞品在移动端的用户评分、近期差评趋势（近 3 个月）及官方响应情况。区分 iOS 和 Android 平台数据。优先引用可量化的评分和排名数据。"
+> [分析目标]
+> 分析各竞品在移动端的用户评分、近期差评趋势（近 3 个月）及官方响应情况。区分 iOS 和 Android 平台数据。
+>
+> [输出要求]
+> 优先引用可量化的评分和排名数据。若某平台无足够评分，注明"数据不足"而非跳过该平台。
 
 **不好的 description：**
 
-> "分析定价。" — 太简略，Writer 不知道要关注什么
+> "分析定价。" — 太简略，Writer 不知道要关注什么；缺少 [输出要求] 段
 
-> "分析定价策略，包括免费版、专业版、企业版。" — 过于死板，Writer 可能强行套模板
+> "分析定价策略，包括免费版、专业版、企业版，必须以表格形式输出。" — 过于死板，Writer 可能强行套模板；不应出现"必须"
 
 ### 4.2 编写原则
 
@@ -135,6 +142,28 @@ Collector Agent 的 prompt 中必须包含此映射逻辑。当 `target_platform
 2. **允许异常情况**（无公开定价、数据缺失），给出处理方式
 3. **指明优先级**（"优先引用量化数据"、"若有明确差异请用表格"）
 4. **避免死模板**（不要写"必须以表格形式输出"）
+
+### 4.3 结构化要求（强制）
+
+为保证 Writer Agent 在不同运行中产出结构一致，每个 description 必须包含两段：
+
+```
+[分析目标]
+<要回答什么问题、关注什么维度的差异>
+
+[输出要求]
+<数据如何组织：优先表格还是段落、异常情况如何处理、引用格式要求>
+```
+
+**完整范例（符合两段式规范）：**
+
+> [分析目标]
+> 对比各竞品的定价档位（免费版/专业版/企业版）、核心权益差异及隐藏费用（如超出限额的额外收费）。
+>
+> [输出要求]
+> 若有明确的参数差异，优先用表格呈现各档位对应关系；若某竞品无公开定价，明确注明"未公开"并记录获取报价的途径。每个价格数据点需附带来源引用。
+
+两段式结构不约束具体措辞，但 Writer 通过两段语义锚点（目标/要求）能稳定解析意图，降低不同运行间的输出格式漂移。
 
 ---
 
@@ -210,10 +239,9 @@ backend/schemas/
       "dimensions": [
         {
           "name": "功能对比",
-          "description": "对比各竞品的核心功能差异与优势。若有明确的参数差异请用表格呈现，若某竞品缺少某项功能请明确标注。",
+          "description": "[分析目标]\n对比各竞品的核心功能差异与优势。\n\n[输出要求]\n若有明确的参数差异优先用表格呈现，若某竞品缺少某项功能请明确标注。每个功能点需附带来源引用。",
           "keywords": ["功能", "特性", "支持"],
           "target_platform": "official_website",
-          "data_sources": ["web"],
           "min_sources": 2,
           "preferred_sources": ["官网产品页", "官方文档"]
         }
@@ -239,11 +267,15 @@ Schema（静态模板）和 TaskDAG（任务实例）是分离的两层：
 ```python
 # backend/app/models/dag.py — TaskDAG 修改
 
+class Competitor(BaseModel):
+    name: str           # "飞书"
+    domain: str = ""    # "feishu.cn"（可选，用于 target_platform 域名约束）
+
 class TaskDAG(BaseModel):
     task_id: str
     schema_id: str = ""           # 新增：引用 Schema
     schema_version: str = ""      # 新增：记录使用的 Schema 版本
-    competitors: list[str]
+    competitors: list[Competitor] # 升级：从 list[str] 改为结构化
     dag: DAGBlueprint
     traceability: TraceabilityConfig = Field(default_factory=TraceabilityConfig)
 ```
@@ -259,11 +291,36 @@ class TaskDAG(BaseModel):
 2. 用户选择模板 + 填写竞品名单     前端组装请求
 3. 提交任务                        POST /api/tasks { schema_id, competitors }
 4. Orchestrator 加载 Schema        读 backend/schemas/{schema_id}.json
-5. 展开维度 → 生成 DAG 节点        每个 DimensionSchema → Collector/Analyst/Writer 任务
-6. Collector 按 target_platform    映射到采集工具，执行定向采集
-7. Analyst 按 min_sources 校验     降级或正常输出
-8. Writer 按 description 组织      自然语言驱动输出结构
+5. 竞品域名解析                    将竞品名称映射为官网域名（见 7.4）
+6. 展开维度 → 生成 DAG 节点        每个 DimensionSchema → Collector/Analyst/Writer 任务
+7. Collector 按 target_platform    将域名注入搜索模板，执行定向采集
+8. Analyst 按 min_sources 校验     降级或正常输出
+9. Writer 按 description 组织      自然语言驱动输出结构
 ```
+
+### 7.4 竞品域名解析（关键前置步骤）
+
+`target_platform` 为 `official_website` 或 `pricing_page` 时，Collector 需要 `{competitor_domain}` 来构造搜索模板。但用户输入的竞品名单是名称（如"飞书"），不是域名。
+
+**解析策略（三级回退）：**
+
+1. **用户显式提供**（优先）：前端允许用户填写竞品时附带域名，如 `{"name": "飞书", "domain": "feishu.cn"}`
+2. **Orchestrator 内置映射表**（次选）：维护常见竞品名称→域名映射，如 `{"飞书": "feishu.cn", "钉钉": "dingtalk.com"}`
+3. **Collector 自主搜索**（兜底）：Collector 先用 `{competitor_name} 官网` 搜索一次，从首页 URL 提取域名，再执行正式的定向采集
+
+**TaskDAG 模型调整：**
+
+`competitors` 从 `list[str]` 升级为结构：
+
+```python
+class Competitor(BaseModel):
+    name: str           # "飞书"
+    domain: str = ""    # "feishu.cn"（可选，未填则走回退策略）
+
+# TaskDAG.competitors: list[Competitor]
+```
+
+若 `competitor.domain` 为空且 `target_platform` 需要域名，Collector 按回退策略 2→3 依次尝试，最终仍无域名则将该维度标记为 `data_insufficient`。
 
 ---
 
@@ -298,15 +355,21 @@ PUT 创建/替换时：
 
 ```python
 def validate_traceability(analysis_result: AnalysisResult) -> list[str]:
-    """检查每个 finding 的 source_ref 和 quote 是否非空。"""
+    """检查每个 finding 的 source_ref 和 quote 是否非空。
+    跳过数据不足的 finding（confidence.score == 0.0 为 insufficient_data 信号）。
+    """
     errors = []
     for finding in analysis_result.findings:
+        if finding.confidence.score == 0.0:
+            continue  # 数据不足标记，跳过校验
         if not finding.source_ref:
             errors.append(f"Finding '{finding.claim}' 缺少 source_ref")
         if not finding.quote:
             errors.append(f"Finding '{finding.claim}' 缺少 quote")
     return errors
 ```
+
+**跳过逻辑：** `confidence.score == 0.0` 是降级策略的输出信号（见 5.3）。数据不足的 finding 天然没有 source_ref 和 quote，不应对其报错。正常 finding 的 score 始终 > 0（由 Analyst 设定），不会误命中。
 
 ### 9.2 砍掉的校验
 
