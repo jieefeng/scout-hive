@@ -23,7 +23,8 @@ OutputType = Literal["table", "paragraph"]
 
 class DimensionSchema(BaseModel):
     name: str                           # 维度名称
-    keywords: list[str] = Field(min_length=1)  # 搜索关键词（驱动采集）
+    description: str = ""               # AI 理解指令（给 Writer 看，一句话说明要总结什么）
+    keywords: list[str] = Field(min_length=1)  # 搜索关键词（给搜索引擎看，驱动采集）
     output_type: OutputType = "paragraph"      # 输出结构：表格 or 段落
     min_sources: int = Field(default=1, ge=1)   # 最少独立来源数
 ```
@@ -54,7 +55,7 @@ class Competitor(BaseModel):
 
 | 字段 | 去掉 | 原因 |
 |------|------|------|
-| `description` | — | MVP 用 `keywords` 已经够指导采集 |
+| `description` | 加回 | AI 需要知道要提取什么，keywords 只驱动搜索 |
 | `target_platform` | — | MVP 只用 `official_website`，硬编码 |
 | `preferred_sources` | — | `min_sources` 已够用 |
 | `custom_fields` | — | MVP 无人用 |
@@ -80,12 +81,14 @@ DEFAULT_SCHEMA: dict = {
             "dimensions": [
                 {
                     "name": "功能对比",
+                    "description": "对比各竞品提供的核心功能差异，列出各竞品支持的功能项和不支持的功能项。",
                     "keywords": ["功能", "特性", "支持"],
                     "output_type": "table",
                     "min_sources": 2
                 },
                 {
                     "name": "用户体验",
+                    "description": "分析各竞品在界面设计、操作体验、用户评价方面的特点。",
                     "keywords": ["用户体验", "UI", "界面"],
                     "output_type": "paragraph",
                     "min_sources": 1
@@ -97,6 +100,7 @@ DEFAULT_SCHEMA: dict = {
             "dimensions": [
                 {
                     "name": "定价策略",
+                    "description": "对比各竞品的定价模式（免费/订阅/按需）、价格区间、有无隐藏费用。提取每个竞品的具体价格数据。",
                     "keywords": ["定价", "价格", "套餐", "收费"],
                     "output_type": "table",
                     "min_sources": 1
@@ -139,7 +143,7 @@ Collector 行为规则：
 1. 对每个竞品 + 每个维度：
    - 使用 keywords 构造搜索 query
    - 搜索范围：site:{competitor.domain}
-   - 最多返回 10 个结果
+   - 优先找主域名，找不到可尝试子域名（如 buy.{domain}、help.{domain}）
 
 2. 对每个结果：
    - 抓取页面内容 → 切 chunk
@@ -166,8 +170,9 @@ Collector 行为规则：
 ```
 当 output_type = "table" 时：
 - 输出 Markdown 表格，第一列是维度名，其余列是竞品
-- 若某竞品无数据，单元格填 "无数据"
-- 表格后附数据来源脚注
+- 所有竞品必须使用完全相同的行维度（如"基础版价格"、"专业版价格"），没有数据的单元格填"无"
+- 绝对禁止出现行列错位
+- 表格后附数据来源脚注（URL）
 
 当 output_type = "paragraph" 时：
 - 用自然段落叙述，结构为：[竞品名]：[分析结论]
@@ -263,7 +268,7 @@ Reviewer 校验引用完整性（validate_traceability）
 
 | v2 | v3 (MVP) |
 |-----|---------|
-| 6 字段 DimensionSchema | 4 字段 |
+| 6 字段 DimensionSchema | 5 字段（name, description, keywords, output_type, min_sources） |
 | JSON 文件存储 + 代码 fallback | 纯代码内置 |
 | Schema CRUD API | 无 Schema API |
 | target_platform 枚举（6 值） | 硬编码 official_website |
