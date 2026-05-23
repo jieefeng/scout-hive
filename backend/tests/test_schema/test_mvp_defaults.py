@@ -18,9 +18,10 @@ def test_dimension_schema_fields():
     schema = load_default_schema()
     dim = schema.groups[0].dimensions[0]
     assert dim.name == "功能对比"
-    assert dim.output_type in ["table", "paragraph"]
+    assert dim.output_type in ["table", "paragraph", "battlecard"]
     assert len(dim.keywords) >= 1
-    assert dim.min_sources >= 1
+    assert dim.evidence_threshold >= 1
+    assert dim.tracking_sources == ["web"]
 
 def test_output_type_enum():
     t = DimensionSchema(
@@ -28,3 +29,17 @@ def test_output_type_enum():
         keywords=["测试"], output_type="table"
     )
     assert t.output_type == "table"
+
+def test_battlecard_output_type():
+    t = DimensionSchema(
+        name="测试", description="测试",
+        keywords=["测试"], output_type="battlecard"
+    )
+    assert t.output_type == "battlecard"
+
+def test_tracking_sources_default():
+    t = DimensionSchema(
+        name="测试", description="测试",
+        keywords=["测试"]
+    )
+    assert t.tracking_sources == ["web"]
