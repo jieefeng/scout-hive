@@ -17,6 +17,9 @@ class AgentResult(BaseModel):
     error_message: str | None = None
     trace: TraceRecord | None = None
     llm_response: LLMResponse | None = None
+    reasoning_chain: list[dict] = Field(default_factory=list)
+    sources: list[dict] = Field(default_factory=list)
+    confidence: dict = Field(default_factory=dict)
 
 
 class AgentBase(ABC):
@@ -47,6 +50,9 @@ class AgentBase(ABC):
             result.output,
             elapsed,
             llm_response=result.llm_response,
+            reasoning_chain=result.reasoning_chain,
+            sources=result.sources,
+            confidence=result.confidence,
         )
         return result
 
@@ -72,6 +78,9 @@ class AgentBase(ABC):
         elapsed_ms: int,
         llm_response: LLMResponse | None = None,
         error: str | None = None,
+        reasoning_chain: list[dict] | None = None,
+        sources: list[dict] | None = None,
+        confidence: dict | None = None,
     ) -> TraceRecord:
         llm_meta = LLMMetadata()
         if llm_response:
@@ -87,6 +96,9 @@ class AgentBase(ABC):
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             input_refs=[],
             output=output,
+            reasoning_chain=reasoning_chain or [],
+            sources=sources or [],
+            confidence=confidence or {},
             llm_metadata=llm_meta,
         )
 

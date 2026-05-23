@@ -11,11 +11,11 @@ export async function fetchTask(taskId: string) {
   return resp.json();
 }
 
-export async function createTask(message: string) {
+export async function createTask(competitors: Array<{name: string, domain: string}>) {
   const resp = await fetch(`${API_BASE}/api/tasks/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ competitors }),
   });
   return resp.json();
 }

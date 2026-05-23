@@ -20,7 +20,6 @@ class Analyst(AgentBase):
 1. 每条结论(claim)必须附带原文引用(quote)和来源(source_ref)
 2. 找不到原文引用的结论必须丢弃
 3. quote_type 为 "exact"（原文）或 "paraphrased"（意译）
-4. 置信度根据来源数量和可靠性评估
 
 输出 JSON 格式：
 {
@@ -37,9 +36,17 @@ class Analyst(AgentBase):
     "dimensions": ["维度1"],
     "competitors": {"竞品A": {"维度1": {"status": "✓", "detail": "描述"}}}
   }
-}"""
+}
+
+min_sources 降级规则（分析时使用）：
+- sources >= min_sources：正常输出，confidence.level = "high"
+- 1 <= sources < min_sources：降级输出，confidence.level = "low"，在 claim 前加 ⚠️，在 uncertainty_factors 中记录"仅找到 N 条来源，未达最低要求 (min_sources)"
+- sources == 0：标记为 data_insufficient，claim 前加 "⚠️ 数据不足："，confidence.score = 0.0, level = "low"
+
+注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。"""
 
     async def execute(self, input_data: dict) -> AgentResult:
+        min_sources = input_data.get("min_sources", 1)
         messages = [
             Message(role="system", content=self.SYSTEM_PROMPT),
             Message(role="user", content=json.dumps(input_data, ensure_ascii=False, default=str)),
@@ -67,4 +74,24 @@ class Analyst(AgentBase):
             findings=valid_findings,
             comparison_matrix=ComparisonMatrix(**parsed.get("comparison_matrix", {})),
         )
-        return AgentResult(success=True, output=result.model_dump(), llm_response=llm_response)
+        # Extract trace enrichment data from findings
+        reasoning_chain = []
+        sources = []
+        best_confidence = {"score": 0, "level": "low"}
+        for f in parsed.get("findings", []):
+            for step in f.get("reasoning_chain", []):
+                reasoning_chain.append(step)
+            if f.get("source_ref"):
+                sources.append({
+                    "source_id": f["source_ref"],
+                    "type": "analysis",
+                    "url": "",
+                    "snippet": f.get("quote", ""),
+                })
+            conf = f.get("confidence", {})
+            if conf.get("score", 0) > best_confidence.get("score", 0):
+                best_confidence = conf
+        return AgentResult(
+            success=True, output=result.model_dump(), llm_response=llm_response,
+            reasoning_chain=reasoning_chain, sources=sources, confidence=best_confidence,
+        )

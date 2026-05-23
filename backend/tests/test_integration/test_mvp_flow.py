@@ -1,0 +1,485 @@
+"""
+MVP flow integration tests.
+
+Verifies the complete MVP flow end-to-end with all LLM calls mocked:
+- User fills in competitors -> system runs full flow -> outputs report
+- execute_mvp correctly loads DEFAULT_SCHEMA and expands dimension x competitor
+- Collector, Analyst, Writer are called with correct params (domain, output_type, min_sources)
+- No real network requests, all LLM calls are mocked.
+"""
+import pytest
+from unittest.mock import AsyncMock, patch
+from app.engine.orchestrator import Orchestrator
+from app.engine.state_manager import StateManager
+from app.engine.event_bus import EventBus
+from app.models.dag import DAGBlueprint, DAGNode, DAGEdge
+from app.agents.base import AgentResult
+from app.models.task import TaskStatus, Competitor
+
+
+def _build_mvp_blueprint(competitors: list[dict], dimensions: list[str]) -> DAGBlueprint:
+    """Build MVP DAG: Collector -> Analyst -> Writer for each competitor x dimension.
+
+    Args:
+        competitors: list of dicts with "name" and "domain" keys
+        dimensions: list of dimension names
+    """
+    nodes = []
+    edges = []
+    node_id = 0
+
+    for comp in competitors:
+        comp_name = comp["name"]
+        comp_domain = comp.get("domain", "")
+        for dim in dimensions:
+            collect_id = f"collect_{node_id}"
+            analyze_id = f"analyze_{node_id}"
+            write_id = f"write_{node_id}"
+
+            nodes.extend([
+                DAGNode(
+                    id=collect_id,
+                    agent="Collector",
+                    action="search",
+                    params={"competitor": comp_name, "dimension": dim, "domain": comp_domain},
+                    depends_on=[],
+                ),
+                DAGNode(
+                    id=analyze_id,
+                    agent="Analyst",
+                    action="analyze",
+                    params={"competitor": comp_name, "dimension": dim},
+                    depends_on=[collect_id],
+                ),
+                DAGNode(
+                    id=write_id,
+                    agent="Writer",
+                    action="write",
+                    params={"competitor": comp_name, "dimension": dim},
+                    depends_on=[analyze_id],
+                ),
+            ])
+            edges.extend([
+                DAGEdge(from_node=collect_id, to_node=analyze_id),
+                DAGEdge(from_node=analyze_id, to_node=write_id),
+            ])
+            node_id += 1
+
+    return DAGBlueprint(nodes=nodes, edges=edges, feedback_edges=[])
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_full_flow_single_competitor():
+    """Test complete MVP flow: one competitor, one dimension."""
+    sm = StateManager()
+    bus = EventBus()
+
+    # Mock LLM responses for each agent
+    mock_collector = AsyncMock()
+    mock_collector.execute.return_value = AgentResult(
+        success=True,
+        output={
+            "data_id": "test-data-001",
+            "source_type": "web",
+            "content": "竞品A functionality details...",
+            "chunks": [],
+        },
+    )
+
+    mock_analyst = AsyncMock()
+    mock_analyst.execute.return_value = AgentResult(
+        success=True,
+        output={
+            "competitor": "竞品A",
+            "dimension": "功能对比",
+            "findings": [
+                {
+                    "finding_id": "f001",
+                    "claim": "竞品A支持功能A",
+                    "quote": "原文引用",
+                    "quote_type": "exact",
+                    "source_ref": "src001",
+                    "chunk_ref": "chunk001",
+                    "reasoning_chain": [],
+                    "confidence": {"score": 0.9, "level": "high", "uncertainty_factors": []},
+                }
+            ],
+            "comparison_matrix": {"dimensions": [], "competitors": {}},
+        },
+    )
+
+    mock_writer = AsyncMock()
+    mock_writer.execute.return_value = AgentResult(
+        success=True,
+        output={"report_html": "<p>竞品A 功能对比 报告内容</p>", "summary": "测试报告"},
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_flow_001"
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="feishu.cn")], ["功能对比"], {})
+
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "feishu.cn"}], dimensions=["功能对比"])
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[{"name": "竞品A", "domain": "feishu.cn"}],
+    )
+
+    # Verify task completed
+    assert sm.get_task(task_id).status == TaskStatus.COMPLETED
+
+    # Verify report was generated
+    assert "竞品A" in sm.get_task(task_id).report_html
+    assert "功能对比" in sm.get_task(task_id).report_html
+
+    # Verify Collector was called with domain and keywords from DEFAULT_SCHEMA
+    collector_call = mock_collector.execute.call_args[0][0]
+    assert collector_call["target"] == "竞品A"
+    assert collector_call["domain"] == "feishu.cn"
+    assert collector_call["keywords"] == ["功能", "特性", "支持"]
+    assert collector_call["min_sources"] == 2  # 功能对比 min_sources in DEFAULT_SCHEMA
+
+    # Verify Analyst was called with min_sources
+    analyst_call = mock_analyst.execute.call_args[0][0]
+    assert analyst_call["competitor"] == "竞品A"
+    assert analyst_call["dimension"] == "功能对比"
+    assert analyst_call["min_sources"] == 2
+
+    # Verify Writer was called with output_type and description
+    writer_call = mock_writer.execute.call_args[0][0]
+    assert writer_call["competitor"] == "竞品A"
+    assert writer_call["dimension"] == "功能对比"
+    assert writer_call["output_type"] == "table"
+    assert writer_call["description"] != ""
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_full_flow_multi_competitor_multi_dimension():
+    """Test MVP flow with multiple competitors and multiple dimensions."""
+    sm = StateManager()
+    bus = EventBus()
+
+    def make_collector_response():
+        return AgentResult(
+            success=True,
+            output={"data_id": "test-data", "content": "content", "chunks": []},
+        )
+
+    def make_analyst_response(comp: str, dim: str):
+        return AgentResult(
+            success=True,
+            output={
+                "competitor": comp,
+                "dimension": dim,
+                "findings": [],
+                "comparison_matrix": {"dimensions": [], "competitors": {}},
+            },
+        )
+
+    def make_writer_response(comp: str, dim: str):
+        return AgentResult(
+            success=True,
+            output={"report_html": f"<p>{comp} {dim} 报告</p>", "summary": "summary"},
+        )
+
+    mock_collector = AsyncMock()
+    mock_analyst = AsyncMock()
+    mock_writer = AsyncMock()
+
+    mock_collector.execute.side_effect = lambda args: make_collector_response()
+    mock_analyst.execute.side_effect = lambda args: make_analyst_response(
+        args["competitor"], args["dimension"]
+    )
+    mock_writer.execute.side_effect = lambda args: make_writer_response(
+        args["competitor"], args["dimension"]
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_flow_002"
+    sm.create_task(
+        task_id,
+        [
+            Competitor(name="竞品A", domain="feishu.cn"),
+            Competitor(name="竞品B", domain="lark.cn"),
+        ],
+        ["功能对比", "用户体验"],
+        {},
+    )
+
+    blueprint = _build_mvp_blueprint(
+        competitors=[{"name": "竞品A", "domain": "feishu.cn"}, {"name": "竞品B", "domain": "lark.cn"}],
+        dimensions=["功能对比", "用户体验"],
+    )
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[
+            {"name": "竞品A", "domain": "feishu.cn"},
+            {"name": "竞品B", "domain": "lark.cn"},
+        ],
+    )
+
+    assert sm.get_task(task_id).status == TaskStatus.COMPLETED
+
+    # Collector should be called 4 times (2 competitors x 2 dimensions)
+    assert mock_collector.execute.call_count == 4
+
+    # Analyst should be called 4 times
+    assert mock_analyst.execute.call_count == 4
+
+    # Writer should be called 4 times
+    assert mock_writer.execute.call_count == 4
+
+    # Verify all report parts are included
+    report = sm.get_task(task_id).report_html
+    assert "竞品A" in report
+    assert "竞品B" in report
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_loads_default_schema_dim_config():
+    """Verify execute_mvp builds correct dim_config from DEFAULT_SCHEMA."""
+    sm = StateManager()
+    bus = EventBus()
+
+    mock_collector = AsyncMock()
+    mock_collector.execute.return_value = AgentResult(
+        success=True,
+        output={"data_id": "test", "content": "", "chunks": []},
+    )
+
+    mock_analyst = AsyncMock()
+    mock_analyst.execute.return_value = AgentResult(
+        success=True,
+        output={"competitor": "", "dimension": "", "findings": [], "comparison_matrix": {}},
+    )
+
+    mock_writer = AsyncMock()
+    mock_writer.execute.return_value = AgentResult(
+        success=True,
+        output={"report_html": "<p>report</p>", "summary": ""},
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_schema_001"
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比", "用户体验", "定价策略"], {})
+
+    blueprint = _build_mvp_blueprint(
+        competitors=[{"name": "竞品A", "domain": "test.com"}],
+        dimensions=["功能对比", "用户体验", "定价策略"],
+    )
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[{"name": "竞品A", "domain": "test.com"}],
+    )
+
+    # Verify Collector calls have correct keywords/min_sources per dimension
+    calls = mock_collector.execute.call_args_list
+    call_params = [c[0][0] for c in calls]
+
+    # 功能对比: keywords=["功能", "特性", "支持"], min_sources=2, output_type=table
+    func_call = next(c for c in call_params if c["dimension"] == "功能对比")
+    assert func_call["keywords"] == ["功能", "特性", "支持"]
+    assert func_call["min_sources"] == 2
+
+    # 用户体验: keywords=["用户体验", "UI", "界面"], min_sources=1, output_type=paragraph
+    ux_call = next(c for c in call_params if c["dimension"] == "用户体验")
+    assert ux_call["keywords"] == ["用户体验", "UI", "界面"]
+    assert ux_call["min_sources"] == 1
+
+    # 定价策略: keywords=["定价", "价格", "套餐", "收费"], min_sources=1, output_type=table
+    price_call = next(c for c in call_params if c["dimension"] == "定价策略")
+    assert price_call["keywords"] == ["定价", "价格", "套餐", "收费"]
+    assert price_call["min_sources"] == 1
+
+    # Verify Writer calls have correct output_type per dimension
+    writer_calls = mock_writer.execute.call_args_list
+    writer_params = [c[0][0] for c in writer_calls]
+
+    func_write = next(c for c in writer_params if c["dimension"] == "功能对比")
+    assert func_write["output_type"] == "table"
+
+    ux_write = next(c for c in writer_params if c["dimension"] == "用户体验")
+    assert ux_write["output_type"] == "paragraph"
+
+    price_write = next(c for c in writer_params if c["dimension"] == "定价策略")
+    assert price_write["output_type"] == "table"
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_collector_injects_domain():
+    """Verify Collector receives domain from competitor."""
+    sm = StateManager()
+    bus = EventBus()
+
+    mock_collector = AsyncMock()
+    mock_collector.execute.return_value = AgentResult(
+        success=True,
+        output={"data_id": "test", "content": "", "chunks": []},
+    )
+
+    mock_analyst = AsyncMock()
+    mock_analyst.execute.return_value = AgentResult(
+        success=True,
+        output={"competitor": "", "dimension": "", "findings": [], "comparison_matrix": {}},
+    )
+
+    mock_writer = AsyncMock()
+    mock_writer.execute.return_value = AgentResult(
+        success=True,
+        output={"report_html": "<p>report</p>", "summary": ""},
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_domain_001"
+    sm.create_task(task_id, [Competitor(name="飞书", domain="feishu.cn")], ["功能对比"], {})
+
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "飞书", "domain": "feishu.cn"}], dimensions=["功能对比"])
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[{"name": "飞书", "domain": "feishu.cn"}],
+    )
+
+    collector_call = mock_collector.execute.call_args[0][0]
+    assert collector_call["domain"] == "feishu.cn"
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_analyst_injects_min_sources():
+    """Verify Analyst receives min_sources from dimension config."""
+    sm = StateManager()
+    bus = EventBus()
+
+    mock_collector = AsyncMock()
+    mock_collector.execute.return_value = AgentResult(
+        success=True,
+        output={"data_id": "test", "content": "", "chunks": []},
+    )
+
+    mock_analyst = AsyncMock()
+    mock_analyst.execute.return_value = AgentResult(
+        success=True,
+        output={"competitor": "", "dimension": "", "findings": [], "comparison_matrix": {}},
+    )
+
+    mock_writer = AsyncMock()
+    mock_writer.execute.return_value = AgentResult(
+        success=True,
+        output={"report_html": "<p>report</p>", "summary": ""},
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_min_sources_001"
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比"], {})
+
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "test.com"}], dimensions=["功能对比"])
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[{"name": "竞品A", "domain": "test.com"}],
+    )
+
+    analyst_call = mock_analyst.execute.call_args[0][0]
+    assert analyst_call["min_sources"] == 2  # from 功能对比 in DEFAULT_SCHEMA
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_writer_injects_output_type():
+    """Verify Writer receives output_type from dimension config."""
+    sm = StateManager()
+    bus = EventBus()
+
+    mock_collector = AsyncMock()
+    mock_collector.execute.return_value = AgentResult(
+        success=True,
+        output={"data_id": "test", "content": "", "chunks": []},
+    )
+
+    mock_analyst = AsyncMock()
+    mock_analyst.execute.return_value = AgentResult(
+        success=True,
+        output={"competitor": "", "dimension": "", "findings": [], "comparison_matrix": {}},
+    )
+
+    mock_writer = AsyncMock()
+    mock_writer.execute.return_value = AgentResult(
+        success=True,
+        output={"report_html": "<p>report</p>", "summary": ""},
+    )
+
+    mock_agents = {
+        "Collector": mock_collector,
+        "Analyst": mock_analyst,
+        "Writer": mock_writer,
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_output_type_001"
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比", "用户体验"], {})
+
+    blueprint = _build_mvp_blueprint(
+        competitors=[{"name": "竞品A", "domain": "test.com"}],
+        dimensions=["功能对比", "用户体验"],
+    )
+    await orch.execute_mvp(
+        task_id,
+        blueprint,
+        competitors=[{"name": "竞品A", "domain": "test.com"}],
+    )
+
+    writer_calls = mock_writer.execute.call_args_list
+    params_by_dim = {c[0][0]["dimension"]: c[0][0] for c in writer_calls}
+
+    assert params_by_dim["功能对比"]["output_type"] == "table"
+    assert params_by_dim["用户体验"]["output_type"] == "paragraph"
+
+
+@pytest.mark.asyncio
+async def test_execute_mvp_empty_competitors():
+    """Verify execute_mvp handles empty competitor list gracefully."""
+    sm = StateManager()
+    bus = EventBus()
+    mock_agents = {
+        name: AsyncMock() for name in ["Collector", "Analyst", "Writer"]
+    }
+
+    orch = Orchestrator(sm, bus, mock_agents)
+    task_id = "test_mvp_empty_001"
+    sm.create_task(task_id, [], [], {})
+
+    blueprint = DAGBlueprint(nodes=[], edges=[], feedback_edges=[])
+    await orch.execute_mvp(task_id, blueprint, competitors=[])
+
+    assert sm.get_task(task_id).status == TaskStatus.COMPLETED

@@ -1,6 +1,6 @@
 import time
 
-from app.models.task import Task, TaskStatus, NodeStatus
+from app.models.task import Task, TaskStatus, NodeStatus, Competitor
 
 
 class StateManager:
@@ -10,7 +10,7 @@ class StateManager:
     def create_task(
         self,
         task_id: str,
-        competitors: list[str],
+        competitors: list[Competitor],
         dimensions: list[str],
         dag_json: dict,
     ) -> Task:
