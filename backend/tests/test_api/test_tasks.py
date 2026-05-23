@@ -26,3 +26,17 @@ async def test_create_task_with_competitors(app):
             assert len(data["competitors"]) == 2
             assert data["competitors"][0]["name"] == "飞书"
             assert data["competitors"][0]["domain"] == "feishu.cn"
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_empty_competitors(app):
+    with patch("app.api.tasks.orchestrator") as mock_orch:
+        mock_orch.execute_mvp = AsyncMock()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/api/tasks/", json={
+                "competitors": []
+            })
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["competitors"] == []
+            assert data["status"] == "pending"

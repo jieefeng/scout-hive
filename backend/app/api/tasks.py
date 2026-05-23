@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.engine.state_manager import StateManager
 from app.engine.orchestrator import Orchestrator
 from app.engine.event_bus import EventBus
@@ -44,9 +44,9 @@ class TaskResponse(BaseModel):
     dag_json: dict = {}
     created_at: str
     updated_at: str
-    report_html: str
-    traces: list
-    reviews: list
+    report_html: str = ""
+    traces: list = Field(default_factory=list)
+    reviews: list = Field(default_factory=list)
 
 
 @router.post("/", response_model=TaskResponse)
@@ -81,6 +81,7 @@ async def create_task(req: CreateTaskRequest):
 
     dag_blueprint = DAGBlueprint(nodes=nodes, edges=edges)
     task = state_manager.create_task(task_id, competitors, dimensions, dag_blueprint.model_dump())
+    assert state_manager.get_task(task_id) is not None, "Task was not stored in state_manager"
 
     async def run_dag():
         try:
