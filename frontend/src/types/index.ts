@@ -1,9 +1,15 @@
+export interface CompetitorInfo {
+  name: string;
+  domain: string;
+}
+
 export interface TaskSummary {
   task_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
-  competitors: string[];
+  competitors: CompetitorInfo[];
   dimensions: string[];
   node_states: Record<string, string>;
+  dag_json?: { nodes?: { id: string; agent: string; action: string; depends_on?: string[] }[]; edges?: { from_node?: string; from?: string; to_node?: string; to?: string }[]; feedback_edges?: { from_node?: string; from?: string; to_node?: string; to?: string; condition?: string }[] };
   created_at: string;
   updated_at: string;
   report_html: string;

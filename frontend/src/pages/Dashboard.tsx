@@ -128,7 +128,7 @@ export default function Dashboard() {
               <Link to={`/task/${task.task_id}`}>
                 任务 {task.task_id.slice(0, 8)} — {task.status}
               </Link>
-              <span style={{ marginLeft: '1rem', color: '#666' }}>{task.competitors.join(', ')}</span>
+              <span style={{ marginLeft: '1rem', color: '#666' }}>{task.competitors.map(c => c.name).join(', ')}</span>
             </div>
           ))}
         </div>

@@ -1,9 +1,12 @@
 import json
 import uuid
+import logging
 
 from app.agents.base import AgentBase, AgentResult
 from app.llm.base import Message
 from app.models.dag import DAGBlueprint, DAGEdge, DAGNode, TaskDAG, TraceabilityConfig
+
+logger = logging.getLogger(__name__)
 
 
 class TaskParser(AgentBase):
@@ -46,10 +49,18 @@ class TaskParser(AgentBase):
             Message(role="system", content=self.SYSTEM_PROMPT),
             Message(role="user", content=user_message),
         ]
+        logger.info(f"TaskParser calling LLM with {len(messages)} messages")
         llm_response = await self.chat(messages)
+        logger.info(f"TaskParser LLM response: {repr(llm_response.content[:500]) if llm_response.content else 'EMPTY'}")
+        content = llm_response.content.strip()
+        # Strip markdown code block fences if present
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(lines[1:-1]) if len(lines) >= 2 else content.lstrip("`")
         try:
-            parsed = json.loads(llm_response.content)
+            parsed = json.loads(content)
         except json.JSONDecodeError as e:
+            logger.error(f"TaskParser JSON parse error: {e}, content={repr(llm_response.content[:200])}")
             return AgentResult(
                 success=False,
                 raw_response=llm_response.content,

@@ -60,4 +60,14 @@ class Reviewer(AgentBase):
             feedback_to=parsed.get("feedback_to", ""),
             feedback_message=parsed.get("feedback_message", ""),
         )
-        return AgentResult(success=True, output=review.model_dump(), llm_response=llm_response)
+        pass_count = sum(1 for c in parsed.get("checks", []) if c.get("status") == "pass")
+        total = len(parsed.get("checks", [])) or 1
+        confidence = {"score": pass_count / total, "level": "high" if pass_count == total else "medium"}
+        reasoning_chain = [
+            {"step": i + 1, "thought": f"检查 {c.get('dimension', '未知')} — {c.get('status', '未知')}"}
+            for i, c in enumerate(parsed.get("checks", []))
+        ]
+        return AgentResult(
+            success=True, output=review.model_dump(), llm_response=llm_response,
+            reasoning_chain=reasoning_chain, confidence=confidence,
+        )
