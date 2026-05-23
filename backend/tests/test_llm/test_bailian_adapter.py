@@ -13,7 +13,7 @@ def test_inheritance():
 
 def test_default_model():
     adapter = BailianAdapter(api_key="dummy_key")
-    assert adapter.model == "qwen-plus"
+    assert adapter.model == "qwen3.6-plus-2026-04-02"
 
 
 def test_custom_model():

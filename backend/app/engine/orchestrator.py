@@ -20,7 +20,7 @@ def _build_dim_config(schema) -> dict:
         for dim in group.dimensions:
             dim_config[dim.name] = {
                 "output_type": dim.output_type,
-                "min_sources": dim.min_sources,
+                "min_sources": dim.evidence_threshold,
                 "description": dim.description,
                 "keywords": dim.keywords,
             }

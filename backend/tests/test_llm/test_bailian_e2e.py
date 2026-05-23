@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def adapter():
-    return BailianAdapter(api_key=os.environ["DASHSCOPE_API_KEY"])
+    return BailianAdapter(api_key=os.environ["DASHSCOPE_API_KEY"], model="qwen3.6-plus-2026-04-02")
 
 
 @pytest.mark.asyncio
@@ -22,7 +22,7 @@ async def test_basic_chat(adapter):
     response = await adapter.chat(messages)
     assert response.content
     assert len(response.content) > 0
-    assert response.model == "qwen-plus"
+    assert response.model == "qwen3.6-plus-2026-04-02"
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_registry_integration():
         adapters={
             "bailian": LLMAdapterConfig(
                 type="bailian",
-                model="qwen-plus",
+                model="qwen3.6-plus-2026-04-02",
                 api_key=os.environ["DASHSCOPE_API_KEY"],
             )
         },
@@ -76,7 +76,7 @@ async def test_registry_integration():
 @pytest.mark.asyncio
 async def test_multiple_models():
     api_key = os.environ["DASHSCOPE_API_KEY"]
-    for model in ["qwen-turbo", "qwen-plus"]:
+    for model in ["qwen-turbo", "qwen3.6-plus-2026-04-02"]:
         adapter = BailianAdapter(api_key=api_key, model=model)
         messages = [Message(role="user", content="Hi")]
         response = await adapter.chat(messages, max_tokens=16)

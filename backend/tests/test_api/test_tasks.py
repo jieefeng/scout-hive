@@ -25,7 +25,7 @@ async def test_create_task_with_competitors(app):
             data = resp.json()
             assert len(data["competitors"]) == 2
             assert data["competitors"][0]["name"] == "飞书"
-            assert data["competitors"][0]["domain"] == "feishu.cn"
+            assert data["competitors"][0]["website"] == "feishu.cn"
 
 
 @pytest.mark.asyncio
