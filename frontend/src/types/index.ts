@@ -6,6 +6,7 @@ export interface CompetitorInfo {
 export interface TaskSummary {
   task_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number; // 0.0 - 1.0
   competitors: CompetitorInfo[];
   dimensions: string[];
   node_states: Record<string, string>;

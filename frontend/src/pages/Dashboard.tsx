@@ -10,7 +10,11 @@ interface CompetitorEntry {
 }
 
 function isValidDomain(domain: string): boolean {
-  return /\.[a-zA-Z]{2,}$/.test(domain.trim());
+  const d = domain.trim();
+  if (!d) return false;
+  if (d.includes('/') || d.includes(':') || d.includes('?')) return false;
+  if (d.endsWith('.')) return false;
+  return /^[a-zA-Z0-9][a-zA-Z0-9\-]*(\.[a-zA-Z]{2,})+$/.test(d);
 }
 
 export default function Dashboard() {

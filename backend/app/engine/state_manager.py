@@ -36,11 +36,24 @@ class StateManager:
         task = self._tasks[task_id]
         task.status = status
         task.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        task.progress = self._calculate_progress(task)
 
     def update_node_status(self, task_id: str, node_id: str, status: NodeStatus):
         task = self._tasks[task_id]
         task.node_states[node_id] = status
         task.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        task.progress = self._calculate_progress(task)
+
+    def _calculate_progress(self, task: Task) -> float:
+        """Calculate task progress based on completed nodes."""
+        total_nodes = len(task.dag_json.get("nodes", []))
+        if total_nodes == 0:
+            return 0.0
+        completed_nodes = sum(
+            1 for status in task.node_states.values()
+            if status in (NodeStatus.COMPLETED, NodeStatus.SKIPPED)
+        )
+        return round(completed_nodes / total_nodes, 2)
 
     def add_trace(self, task_id: str, trace: dict):
         task = self._tasks[task_id]

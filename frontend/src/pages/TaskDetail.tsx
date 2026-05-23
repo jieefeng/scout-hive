@@ -5,6 +5,7 @@ import DagViewer from '../components/DagViewer';
 import AgentDetail from '../components/AgentDetail';
 import TraceBrowser from '../components/TraceBrowser';
 import ReviewTimeline from '../components/ReviewTimeline';
+import ReportViewer from '../components/ReportViewer';
 import type { TraceRecord } from '../types';
 
 const POLL_INTERVAL = 3000;
@@ -57,11 +58,35 @@ export default function TaskDetail() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>
           任务详情: {currentTask.task_id.slice(0, 8)}
         </h1>
-        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b', alignItems: 'center' }}>
           <span>状态: <strong style={{ color: currentTask.status === 'running' ? '#3b82f6' : '#1e293b' }}>{currentTask.status}</strong></span>
           <span>竞品: {currentTask.competitors.map(c => c.name).join(', ')}</span>
+          <span>维度: {currentTask.dimensions?.join(', ') || '加载中...'}</span>
+          {currentTask.progress > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ width: '80px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${currentTask.progress * 100}%`,
+                  height: '100%',
+                  background: currentTask.status === 'running' ? '#3b82f6' : '#22c55e',
+                  transition: 'width 0.3s'
+                }} />
+              </div>
+              <span style={{ fontSize: '0.8rem' }}>{Math.round(currentTask.progress * 100)}%</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Report Section — show when available */}
+      {currentTask.report_html && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem' }}>分析报告</h2>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', background: '#fff' }}>
+            <ReportViewer task={currentTask} />
+          </div>
+        </div>
+      )}
 
       {/* DAG Section — full width, tall */}
       <div style={{

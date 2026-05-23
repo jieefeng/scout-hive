@@ -38,6 +38,7 @@ class CreateTaskRequest(BaseModel):
 class TaskResponse(BaseModel):
     task_id: str
     status: str
+    progress: float = 0.0  # 0.0 - 1.0
     competitors: list[CompetitorInput]
     dimensions: list[str]
     node_states: dict

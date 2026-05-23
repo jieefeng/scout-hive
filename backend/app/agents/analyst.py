@@ -46,10 +46,41 @@ min_sources 降级规则（分析时使用）：
 注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。"""
 
     async def execute(self, input_data: dict) -> AgentResult:
-        min_sources = input_data.get("min_sources", 1)
+        evidence_threshold = input_data.get("evidence_threshold", 1)
+        raw_data = input_data.get("raw_data", {})
+
+        # 代码层计算 source 数量
+        source_count = self._count_sources(raw_data)
+
+        # 代码层确定 confidence 级别
+        if source_count >= evidence_threshold:
+            confidence_level = "high"
+        elif source_count > 0:
+            confidence_level = "low"
+        else:
+            confidence_level = "insufficient"
+
+        # 将降级信息注入 prompt，让 LLM 遵循
+        downgrade_hint = ""
+        if confidence_level == "low":
+            downgrade_hint = (
+                f"\n[降级警告] 仅找到 {source_count} 条来源，未达最低要求 ({evidence_threshold})。"
+                f"所有结论前必须加 ⚠️ 标记，confidence.level 设为 'low'。"
+            )
+        elif confidence_level == "insufficient":
+            downgrade_hint = (
+                "\n[数据不足] 未能找到足够来源，所有结论前加 ⚠️ 数据不足：，"
+                "confidence.score 设为 0.0，level 设为 'low'。"
+            )
+
         messages = [
             Message(role="system", content=self.SYSTEM_PROMPT),
-            Message(role="user", content=json.dumps(input_data, ensure_ascii=False, default=str)),
+            Message(role="user", content=json.dumps({
+                **input_data,
+                "_downgrade_hint": downgrade_hint,
+                "_source_count": source_count,
+                "_confidence_level": confidence_level,
+            }, ensure_ascii=False, default=str)),
         ]
         llm_response = await self.chat(messages)
         try:
@@ -95,3 +126,16 @@ min_sources 降级规则（分析时使用）：
             success=True, output=result.model_dump(), llm_response=llm_response,
             reasoning_chain=reasoning_chain, sources=sources, confidence=best_confidence,
         )
+
+    def _count_sources(self, raw_data: dict) -> int:
+        """计算 raw_data 中独立来源的数量"""
+        if not raw_data:
+            return 0
+        sources = raw_data.get("sources", [])
+        if isinstance(sources, list):
+            return len(sources)
+        chunks = raw_data.get("chunks", [])
+        if isinstance(chunks, list):
+            urls = set(c.get("url", "") for c in chunks if c.get("url"))
+            return len(urls)
+        return 0
