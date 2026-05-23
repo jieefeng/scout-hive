@@ -81,15 +81,15 @@ async def test_execute_mvp_loads_default_schema():
     blueprint = _make_mvp_blueprint()
     await orch.execute_mvp(task_id, blueprint, competitors=[{"name": "竞品A", "domain": "产品"}])
 
-    # Verify Collector was called with keywords and min_sources from DEFAULT_SCHEMA
+    # Verify Collector was called with keywords and evidence_threshold from DEFAULT_SCHEMA
     collector_call = mock_collector.execute.call_args[0][0]
     assert "keywords" in collector_call
     assert collector_call["keywords"] == ["功能", "特性", "支持"]
-    assert collector_call["min_sources"] == 2  # from 功能对比 dimension
+    assert collector_call["evidence_threshold"] == 2  # from 功能对比 dimension
 
-    # Verify Analyst was called with min_sources
+    # Verify Analyst was called with evidence_threshold
     analyst_call = mock_analyst.execute.call_args[0][0]
-    assert analyst_call["min_sources"] == 2
+    assert analyst_call["evidence_threshold"] == 2
 
     # Verify Writer was called with output_type
     writer_call = mock_writer.execute.call_args[0][0]

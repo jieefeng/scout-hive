@@ -143,13 +143,13 @@ async def test_execute_mvp_full_flow_single_competitor():
     assert collector_call["target"] == "竞品A"
     assert collector_call["domain"] == "feishu.cn"
     assert collector_call["keywords"] == ["功能", "特性", "支持"]
-    assert collector_call["min_sources"] == 2  # 功能对比 min_sources in DEFAULT_SCHEMA
+    assert collector_call["evidence_threshold"] == 2  # 功能对比 evidence_threshold in DEFAULT_SCHEMA
 
-    # Verify Analyst was called with min_sources
+    # Verify Analyst was called with evidence_threshold
     analyst_call = mock_analyst.execute.call_args[0][0]
     assert analyst_call["competitor"] == "竞品A"
     assert analyst_call["dimension"] == "功能对比"
-    assert analyst_call["min_sources"] == 2
+    assert analyst_call["evidence_threshold"] == 2
 
     # Verify Writer was called with output_type and description
     writer_call = mock_writer.execute.call_args[0][0]
@@ -299,17 +299,17 @@ async def test_execute_mvp_loads_default_schema_dim_config():
     # 功能对比: keywords=["功能", "特性", "支持"], min_sources=2, output_type=table
     func_call = next(c for c in call_params if c["dimension"] == "功能对比")
     assert func_call["keywords"] == ["功能", "特性", "支持"]
-    assert func_call["min_sources"] == 2
+    assert func_call["evidence_threshold"] == 2
 
-    # 用户体验: keywords=["用户体验", "UI", "界面"], min_sources=1, output_type=paragraph
+    # 用户体验: keywords=["用户体验", "UI", "界面"], evidence_threshold=1, output_type=paragraph
     ux_call = next(c for c in call_params if c["dimension"] == "用户体验")
     assert ux_call["keywords"] == ["用户体验", "UI", "界面"]
-    assert ux_call["min_sources"] == 1
+    assert ux_call["evidence_threshold"] == 1
 
-    # 定价策略: keywords=["定价", "价格", "套餐", "收费"], min_sources=1, output_type=table
+    # 定价策略: keywords=["定价", "价格", "套餐", "收费"], evidence_threshold=1, output_type=table
     price_call = next(c for c in call_params if c["dimension"] == "定价策略")
     assert price_call["keywords"] == ["定价", "价格", "套餐", "收费"]
-    assert price_call["min_sources"] == 1
+    assert price_call["evidence_threshold"] == 1
 
     # Verify Writer calls have correct output_type per dimension
     writer_calls = mock_writer.execute.call_args_list
@@ -371,8 +371,8 @@ async def test_execute_mvp_collector_injects_domain():
 
 
 @pytest.mark.asyncio
-async def test_execute_mvp_analyst_injects_min_sources():
-    """Verify Analyst receives min_sources from dimension config."""
+async def test_execute_mvp_analyst_injects_evidence_threshold():
+    """Verify Analyst receives evidence_threshold from dimension config."""
     sm = StateManager()
     bus = EventBus()
 
@@ -401,7 +401,7 @@ async def test_execute_mvp_analyst_injects_min_sources():
     }
 
     orch = Orchestrator(sm, bus, mock_agents)
-    task_id = "test_mvp_min_sources_001"
+    task_id = "test_mvp_evidence_threshold_001"
     sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比"], {})
 
     blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "test.com"}], dimensions=["功能对比"])
@@ -412,7 +412,7 @@ async def test_execute_mvp_analyst_injects_min_sources():
     )
 
     analyst_call = mock_analyst.execute.call_args[0][0]
-    assert analyst_call["min_sources"] == 2  # from 功能对比 in DEFAULT_SCHEMA
+    assert analyst_call["evidence_threshold"] == 2  # from 功能对比 in DEFAULT_SCHEMA
 
 
 @pytest.mark.asyncio

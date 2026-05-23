@@ -13,16 +13,17 @@ def _build_dim_config(schema) -> dict:
     """Build dimension config map from schema definition.
 
     Returns:
-        dim_name -> {"output_type", "min_sources", "description", "keywords"}
+        dim_name -> {"output_type", "evidence_threshold", "description", "keywords", "tracking_sources"}
     """
     dim_config = {}
     for group in schema.groups:
         for dim in group.dimensions:
             dim_config[dim.name] = {
                 "output_type": dim.output_type,
-                "min_sources": dim.evidence_threshold,
+                "evidence_threshold": dim.evidence_threshold,
                 "description": dim.description,
                 "keywords": dim.keywords,
+                "tracking_sources": dim.tracking_sources,
             }
     return dim_config
 
@@ -167,7 +168,8 @@ class Orchestrator:
                     "domain": params.get("domain", ""),
                     "dimension": dim_name,
                     "keywords": dim_cfg.get("keywords", []),
-                    "min_sources": dim_cfg.get("min_sources", 1),
+                    "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
+                    "tracking_sources": dim_cfg.get("tracking_sources", ["web"]),
                 })
                 results[(comp_name, dim_name)] = {"raw_data": result.output}
 
@@ -179,7 +181,7 @@ class Orchestrator:
                 result = await analyst.execute({
                     "competitor": comp_name,
                     "dimension": dim_name,
-                    "min_sources": dim_cfg.get("min_sources", 1),
+                    "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
                     "raw_data": raw,
                 })
                 results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})
