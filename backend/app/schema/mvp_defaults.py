@@ -63,4 +63,9 @@ DEFAULT_SCHEMA: dict = {
 }
 
 def load_default_schema() -> SchemaDefinition:
+    """Load the default MVP schema definition.
+
+    Raises:
+        ValidationError: If the default schema data is invalid.
+    """
     return SchemaDefinition.model_validate(DEFAULT_SCHEMA)
