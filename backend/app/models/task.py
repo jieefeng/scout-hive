@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 from enum import Enum
 
 
@@ -18,9 +18,14 @@ class NodeStatus(str, Enum):
 
 
 class Competitor(BaseModel):
-    """竞品结构：name + domain（必填）"""
+    """竞品结构：name + website（必填）"""
     name: str           # "飞书"
-    domain: str         # "feishu.cn"
+    website: str = Field(validation_alias=AliasChoices('website', 'domain'))  # 兼容旧名
+
+    @property
+    def domain(self) -> str:
+        """向后兼容：domain 作为 website 的别名"""
+        return self.website
 
 
 class Task(BaseModel):
