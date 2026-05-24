@@ -7,6 +7,7 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    STOPPED = "stopped"
 
 
 class NodeStatus(str, Enum):
@@ -41,3 +42,4 @@ class Task(BaseModel):
     report_html: str = ""
     traces: list[dict] = Field(default_factory=list)
     reviews: list[dict] = Field(default_factory=list)
+    cancelled: bool = False  # 任务是否被用户取消
