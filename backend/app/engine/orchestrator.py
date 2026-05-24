@@ -171,17 +171,17 @@ class Orchestrator:
 
         results: dict[tuple[str, str], dict] = {}  # (competitor, dimension) -> data
 
-        # 节点执行前检查取消标志
-        if self.sm.is_task_cancelled(task_id):
-            task = self.sm.get_task(task_id)
-            for nid, status in task.node_states.items():
-                if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
-                    self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
-            self.sm.update_task_status(task_id, TaskStatus.STOPPED)
-            await self.bus.publish(Event(type="task_stopped", task_id=task_id))
-            return
-
         for node in dag.nodes:
+            # 节点执行前检查取消标志
+            if self.sm.is_task_cancelled(task_id):
+                task = self.sm.get_task(task_id)
+                for nid, status in task.node_states.items():
+                    if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
+                        self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
+                self.sm.update_task_status(task_id, TaskStatus.STOPPED)
+                await self.bus.publish(Event(type="task_stopped", task_id=task_id))
+                return
+
             import time as time_module
             node_start = time_module.monotonic()
             params = node.params
