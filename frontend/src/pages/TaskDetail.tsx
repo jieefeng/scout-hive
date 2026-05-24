@@ -18,10 +18,14 @@ export default function TaskDetail() {
   const [panelOpen, setPanelOpen] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { if (taskId) loadTask(taskId); }, [taskId, loadTask]);
+  useEffect(() => {
+    if (!taskId) return;
+    loadTask(taskId);
+  }, [taskId, loadTask]);
 
   useEffect(() => {
     if (!taskId) return;
+    if (!currentTask) return;
     const isActive = currentTask?.status === 'pending' || currentTask?.status === 'running';
     if (isActive && !intervalRef.current) {
       intervalRef.current = setInterval(() => loadTask(taskId), POLL_INTERVAL);
@@ -38,6 +42,7 @@ export default function TaskDetail() {
   const handleNodeClick = (nodeId: string) => {
     setSelectedNodeId(nodeId);
     const trace = currentTask?.traces?.find(t => t.node_id === nodeId) || null;
+    console.log('[handleNodeClick] nodeId:', nodeId, '| available traces:', currentTask?.traces?.map(t => ({ node_id: t.node_id, agent: t.agent })));
     setSelectedTrace(trace);
     setPanelOpen(true);
   };
@@ -60,6 +65,27 @@ export default function TaskDetail() {
         </h1>
         <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.9rem', color: '#64748b', alignItems: 'center' }}>
           <span>状态: <strong style={{ color: currentTask.status === 'running' ? '#3b82f6' : '#1e293b' }}>{currentTask.status}</strong></span>
+          {currentTask.status === 'running' && (
+            <button
+              onClick={async () => {
+                if (!taskId) return;
+                await fetch(`/api/tasks/${taskId}/stop`, { method: "POST" });
+                loadTask(taskId);
+              }}
+              style={{
+                background: '#ef4444',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                marginLeft: '8px',
+              }}
+            >
+              停止
+            </button>
+          )}
           <span>竞品: {currentTask.competitors.map(c => c.name).join(', ')}</span>
           <span>维度: {currentTask.dimensions?.join(', ') || '加载中...'}</span>
           {currentTask.progress > 0 && (
