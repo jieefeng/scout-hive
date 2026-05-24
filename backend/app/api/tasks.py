@@ -74,15 +74,16 @@ async def create_task(req: CreateTaskRequest):
             nodes.append({"id": c_id, "agent": "Collector", "action": "collect", "params": {"target": comp.name, "domain": comp.website, "dimension": dim}})
             nodes.append({"id": a_id, "agent": "Analyst", "action": "analyze", "params": {"competitor": comp.name, "dimension": dim}})
             nodes.append({"id": w_id, "agent": "Writer", "action": "write", "params": {"competitor": comp.name, "dimension": dim}})
-            edges.append({"from": c_id, "to": a_id})
-            edges.append({"from": a_id, "to": w_id})
+            edges.append({"from_node": c_id, "to_node": a_id})
+            edges.append({"from_node": a_id, "to_node": w_id})
             if prev_end:
-                edges.append({"from": prev_end, "to": c_id})
+                edges.append({"from_node": prev_end, "to_node": c_id})
             prev_end = w_id
 
     dag_blueprint = DAGBlueprint(nodes=nodes, edges=edges)
     task = state_manager.create_task(task_id, [Competitor(name=c.name, website=c.website) for c in competitors], dimensions, dag_blueprint.model_dump())
     assert state_manager.get_task(task_id) is not None, "Task was not stored in state_manager"
+    task.progress = state_manager.calculate_progress(task)
 
     async def run_dag():
         try:
@@ -99,10 +100,25 @@ async def get_task(task_id: str):
     task = state_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    task.progress = state_manager.calculate_progress(task)
     return TaskResponse(**task.model_dump())
 
 
 @router.get("/", response_model=list[TaskResponse])
 async def list_tasks():
     tasks = state_manager.list_tasks()
+    for t in tasks:
+        t.progress = state_manager.calculate_progress(t)
     return [TaskResponse(**t.model_dump()) for t in tasks]
+
+
+@router.post("/{task_id}/stop")
+async def stop_task(task_id: str):
+    """停止指定任务的执行。"""
+    task = state_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != TaskStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Task is not running")
+    state_manager.cancel_task(task_id)
+    return {"ok": True}
