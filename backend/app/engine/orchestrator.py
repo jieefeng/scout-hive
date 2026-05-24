@@ -54,6 +54,8 @@ class Orchestrator:
             await self.bus.publish(Event(type="node_completed", task_id=task_id, node_id=node.id, data=result.output))
         else:
             self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
+            if result.trace:
+                self.sm.add_trace(task_id, result.trace.model_dump())
             await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": result.error_message}))
 
         return result
@@ -66,6 +68,16 @@ class Orchestrator:
         retry_count: dict[str, int] = {}
 
         while True:
+            # 检查取消标志
+            if self.sm.is_task_cancelled(task_id):
+                task = self.sm.get_task(task_id)
+                for nid, status in task.node_states.items():
+                    if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
+                        self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
+                self.sm.update_task_status(task_id, TaskStatus.STOPPED)
+                await self.bus.publish(Event(type="task_stopped", task_id=task_id))
+                break
+
             completed = {
                 nid for nid, status in self.sm.get_task(task_id).node_states.items()
                 if status in (NodeStatus.COMPLETED, NodeStatus.SKIPPED)
@@ -114,6 +126,11 @@ class Orchestrator:
 
         await self.execute_dag(task_id, blueprint)
 
+        # 检查是否被停止（execute_dag 可能因取消而 break）
+        task = self.sm.get_task(task_id)
+        if task and task.status == TaskStatus.STOPPED:
+            return
+
         for fe in blueprint.feedback_edges:
             from_status = self.sm.get_task(task_id).node_states.get(fe.from_node)
             if from_status == NodeStatus.FAILED:
@@ -150,57 +167,109 @@ class Orchestrator:
 
         schema = load_default_schema()
         dim_config = _build_dim_config(schema)
+        self.sm.update_task_status(task_id, TaskStatus.RUNNING)
 
         results: dict[tuple[str, str], dict] = {}  # (competitor, dimension) -> data
 
+        # 节点执行前检查取消标志
+        if self.sm.is_task_cancelled(task_id):
+            task = self.sm.get_task(task_id)
+            for nid, status in task.node_states.items():
+                if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
+                    self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
+            self.sm.update_task_status(task_id, TaskStatus.STOPPED)
+            await self.bus.publish(Event(type="task_stopped", task_id=task_id))
+            return
+
         for node in dag.nodes:
+            import time as time_module
+            node_start = time_module.monotonic()
             params = node.params
             comp_name = params.get("competitor", params.get("target", ""))
             dim_name = params.get("dimension", "")
             dim_cfg = dim_config.get(dim_name, {})
 
+            # Update node state to RUNNING
+            self.sm.update_node_status(task_id, node.id, NodeStatus.RUNNING)
+            await self.bus.publish(Event(type="node_started", task_id=task_id, node_id=node.id))
+
             if node.agent == "Collector":
                 collector = self.agents.get("Collector")
                 if not collector:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
                     continue
-                result = await collector.execute({
+                input_data = {
                     "target": comp_name,
                     "domain": params.get("domain", ""),
                     "dimension": dim_name,
                     "keywords": dim_cfg.get("keywords", []),
                     "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
                     "tracking_sources": dim_cfg.get("tracking_sources", ["web"]),
-                })
+                }
+                result = await collector.execute(input_data)
                 results[(comp_name, dim_name)] = {"raw_data": result.output}
 
             elif node.agent == "Analyst":
                 analyst = self.agents.get("Analyst")
                 if not analyst:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
                     continue
                 raw = results.get((comp_name, dim_name), {}).get("raw_data", {})
-                result = await analyst.execute({
+                input_data = {
                     "competitor": comp_name,
                     "dimension": dim_name,
                     "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
                     "raw_data": raw,
-                })
+                }
+                result = await analyst.execute(input_data)
                 results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})
                 results[(comp_name, dim_name)]["analysis"] = result.output
 
             elif node.agent == "Writer":
                 writer = self.agents.get("Writer")
                 if not writer:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
                     continue
                 analysis = results.get((comp_name, dim_name), {}).get("analysis", {})
-                result = await writer.execute({
+                input_data = {
                     "competitor": comp_name,
                     "dimension": dim_name,
                     "output_type": dim_cfg.get("output_type", "paragraph"),
                     "description": dim_cfg.get("description", ""),
                     "findings": analysis.get("findings", []) if isinstance(analysis, dict) else [],
-                })
+                }
+                result = await writer.execute(input_data)
                 results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})
                 results[(comp_name, dim_name)]["report"] = result.output
+
+            else:
+                # Unknown agent type
+                self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
+                await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": f"Unknown agent: {node.agent}"}))
+                continue
+
+            # Record result state and trace
+            if node.agent in ("Collector", "Analyst", "Writer"):
+                agent = self.agents.get(node.agent)
+                elapsed_ms = int((time_module.monotonic() - node_start) * 1000)
+                trace_record = agent._build_trace(
+                    node.id, input_data, result.output, elapsed_ms,
+                    llm_response=result.llm_response,
+                    reasoning_chain=result.reasoning_chain,
+                    sources=result.sources,
+                    confidence=result.confidence,
+                    error=str(result.error_message) if not result.success else None,
+                )
+                if result.success:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.COMPLETED)
+                    self.sm.add_trace(task_id, trace_record.model_dump())
+                    if node.agent == "Writer" and result.output.get("report_html"):
+                        self.sm.set_report(task_id, result.output["report_html"])
+                    await self.bus.publish(Event(type="node_completed", task_id=task_id, node_id=node.id, data=result.output))
+                else:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
+                    self.sm.add_trace(task_id, trace_record.model_dump())
+                    await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": result.error_message}))
 
         # Merge all report_html pieces into final report
         report_parts = []
@@ -216,3 +285,4 @@ class Orchestrator:
         final_report = "\n\n".join(report_parts)
         self.sm.set_report(task_id, final_report)
         self.sm.update_task_status(task_id, TaskStatus.COMPLETED)
+        await self.bus.publish(Event(type="task_completed", task_id=task_id))
