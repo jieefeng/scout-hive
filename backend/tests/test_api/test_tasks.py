@@ -52,8 +52,10 @@ async def test_stop_task_success(app):
 
 @pytest.mark.asyncio
 async def test_stop_task_not_found(app):
-    with patch("app.api.tasks.orchestrator") as mock_orch:
+    with patch("app.api.tasks.orchestrator") as mock_orch, \
+         patch("app.api.tasks.state_manager") as mock_sm:
         mock_orch.execute_mvp = AsyncMock()
+        mock_sm.get_task = MagicMock(return_value=None)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/tasks/nonexistent-id/stop")
             assert resp.status_code == 404
@@ -61,13 +63,17 @@ async def test_stop_task_not_found(app):
 
 @pytest.mark.asyncio
 async def test_stop_task_not_running(app):
-    with patch("app.api.tasks.orchestrator") as mock_orch:
+    with patch("app.api.tasks.orchestrator") as mock_orch, \
+         patch("app.api.tasks.state_manager") as mock_sm:
         mock_orch.execute_mvp = AsyncMock()
+        # Mock get_task to return a task with COMPLETED status
+        def mock_get_task(task_id):
+            from app.models.task import TaskStatus
+            task = MagicMock()
+            task.status = TaskStatus.COMPLETED
+            return task
+        mock_sm.get_task = MagicMock(side_effect=mock_get_task)
+
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/tasks/", json={
-                "competitors": [{"name": "飞书", "domain": "feishu.cn"}]
-            })
-            task_id = resp.json()["task_id"]
-            # 任务可能已完成或状态不符，返回 400
-            resp = await client.post(f"/api/tasks/{task_id}/stop")
-            assert resp.status_code in (200, 400)
+            resp = await client.post("/api/tasks/test-task-id/stop")
+            assert resp.status_code == 400
