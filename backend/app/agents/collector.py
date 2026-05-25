@@ -13,8 +13,6 @@ from app.models.raw_data import Chunk, RawData, RawDataMetadata
 
 logger = logging.getLogger(__name__)
 
-SEARCH_TIMEOUT = 15
-
 
 class Collector(AgentBase):
     SYSTEM_PROMPT_TEMPLATE = """你是一个信息采集专家。根据给定的竞品名称、分析维度和域名约束，生成搜索关键词和采集策略。
@@ -48,30 +46,84 @@ class Collector(AgentBase):
             logger.warning(f"Failed to fetch {url}: {e}")
             return ""
 
-    async def _search_ddg(self, query: str) -> list[dict]:
-        """Search using DuckDuckGo HTML API and return results with URLs."""
+    async def _search_anysearch(self, query: str, max_results: int = 5) -> list[dict]:
+        """Search using AnySearch REST API and return results with URLs and snippets."""
         results = []
+        config = self._get_anysearch_config()
+        url = "https://api.anysearch.com/v1/search"
+
+        headers = {"Content-Type": "application/json"}
+        if config.api_key:
+            headers["Authorization"] = f"Bearer {config.api_key}"
+
+        payload = {
+            "query": query,
+            "max_results": max_results,
+            "zone": "cn",
+            "language": "zh-CN",
+            "content_types": ["web"],
+        }
+
         try:
-            async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT, follow_redirects=True) as client:
-                resp = await client.get(
-                    "https://html.duckduckgo.com/html/",
-                    params={"q": query},
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
+            async with httpx.AsyncClient(timeout=config.search_timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
-                html = resp.text
-                # Extract result links from DuckDuckGo HTML response
-                import re
-                # DuckDuckGo results have links like <a rel="nofollow" class="result__a" href="...">
-                links = re.findall(r'class="result__a"[^>]*href="([^"]+)"', html)
-                snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
-                for i, url in enumerate(links[:5]):
-                    snippet = snippets[i].strip() if i < len(snippets) else ""
-                    snippet = re.sub(r'<[^>]+>', '', snippet)  # strip HTML tags
-                    results.append({"url": url, "snippet": snippet})
+                data = resp.json()
+
+            results_list = data.get("results", [])
+            if not results_list:
+                logger.warning(
+                    f"AnySearch returned no results for query: {query}, "
+                    f"response: {data}"
+                )
+                return []
+
+            for r in results_list:
+                results.append({
+                    "url": r.get("url", ""),
+                    "snippet": r.get("description", ""),
+                    "content": r.get("content", ""),
+                    "title": r.get("title", ""),
+                })
+
+        except httpx.HTTPError as e:
+            logger.warning(f"AnySearch HTTP error for query '{query}': {e}")
         except Exception as e:
-            logger.warning(f"DuckDuckGo search failed for '{query}': {e}")
+            logger.warning(f"AnySearch search failed for '{query}': {e}")
+
         return results
+
+    async def _extract_anysearch(self, url: str) -> str:
+        """Extract full page content using AnySearch Extract API."""
+        config = self._get_anysearch_config()
+        api_url = "https://api.anysearch.com/v1/extract"
+
+        headers = {"Content-Type": "application/json"}
+        if config.api_key:
+            headers["Authorization"] = f"Bearer {config.api_key}"
+
+        payload = {"url": url}
+
+        try:
+            async with httpx.AsyncClient(timeout=config.extract_timeout) as client:
+                resp = await client.post(api_url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("content", "")
+        except httpx.HTTPError as e:
+            logger.warning(f"AnySearch extract HTTP error for '{url}': {e}")
+        except Exception as e:
+            logger.warning(f"AnySearch extract failed for '{url}': {e}")
+        return ""
+
+    def _get_anysearch_config(self):
+        """Get AnySearch configuration from app config."""
+        try:
+            from app.config import load_config
+            return load_config().anysearch
+        except Exception:
+            from app.config import AnySearchConfig
+            return AnySearchConfig()
 
     async def execute(self, input_data: dict) -> AgentResult:
         target = input_data.get("target", "")
@@ -97,21 +149,33 @@ class Collector(AgentBase):
         search_queries = strategy.get("search_queries", [f"{target} {dimension}"])
         target_urls = strategy.get("target_urls", [])
 
-        # Phase 1: Search for relevant URLs via DuckDuckGo
+        # Phase 1: Search for relevant URLs via AnySearch API
         all_search_results = []
-        for query in search_queries[:3]:  # limit to 3 queries
-            results = await self._search_ddg(query)
+        config = self._get_anysearch_config()
+        max_results = config.max_results_per_query or 5
+
+        for query in search_queries[:3]:
+            results = await self._search_anysearch(query, max_results=max_results)
             all_search_results.extend(results)
-            # Collect discovered URLs for fetching
             for r in results:
                 if r["url"] not in target_urls:
                     target_urls.append(r["url"])
 
-        # Phase 2: Fetch and extract content from top URLs
+        # Phase 2: Fetch and extract content from top URLs (prefer AnySearch extract, fallback to httpx)
         collected_texts = []
         sources = []
+        # Build a map of url -> search_result for fallback
+        url_to_search_result = {r["url"]: r for r in all_search_results}
+
         for url in target_urls[:5]:  # limit to 5 URLs
-            text = await self._fetch_url(url)
+            # Try AnySearch extract first (better markdown conversion)
+            text = await self._extract_anysearch(url)
+            if not text:
+                search_result = url_to_search_result.get(url, {})
+                text = search_result.get("content", "")
+            if not text:
+                # Fallback to direct HTTP fetch
+                text = await self._fetch_url(url)
             if text:
                 collected_texts.append(text)
                 sources.append({
