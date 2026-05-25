@@ -169,6 +169,10 @@ async def test_collector_search_uses_anysearch_api(mock_llm):
         first_call = mock_client.post.call_args_list[0]
         assert "api.anysearch.com/v1/search" in str(first_call)
 
+        # Verify result success and sources were populated
+        assert result.success is True
+        assert result.sources  # Verify sources were populated
+
 
 @pytest.mark.asyncio
 async def test_collector_extract_fallback_to_search_content(mock_llm):
@@ -207,7 +211,11 @@ async def test_collector_extract_fallback_to_search_content(mock_llm):
 
         result = await collector.run({"target": "feishu", "dimension": "features"})
 
+        # Verify post was called exactly 2 times (search + extract)
+        assert mock_client.post.call_count == 2
+
         assert result.success is True
         output = result.output
-        # Should have content from search fallback
-        assert "飞书完整正文内容 from search" in output.get("content", "")
+        # More robust check
+        assert "content" in output
+        assert "飞书完整正文内容 from search" in output["content"]
