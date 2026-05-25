@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.agents.collector import Collector
 from app.agents.base import AgentResult
 from app.llm.base import LLMResponse
@@ -130,3 +130,84 @@ async def test_collector_search_query_includes_site_constraint(mock_llm):
     result = await collector.run({"target": "feishu", "dimension": "documentation", "domain": "feishu.cn"})
 
     assert result.success is True
+
+
+@pytest.mark.asyncio
+async def test_collector_search_uses_anysearch_api(mock_llm):
+    """Collector calls AnySearch REST API via httpx."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["feishu features"]}',
+        model="test",
+    )
+
+    # Mock httpx to verify API call
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "url": "https://www.feishu.cn/",
+                    "description": "飞书官方网站",
+                    "content": "飞书完整内容...",
+                    "title": "飞书官网"
+                }
+            ],
+            "metadata": {"total_results": 1}
+        }
+        mock_client.post.return_value = mock_response
+
+        result = await collector.run({"target": "feishu", "dimension": "features"})
+
+        # Verify post was called with correct endpoint
+        assert mock_client.post.called
+        # Check that search endpoint was called (first call)
+        first_call = mock_client.post.call_args_list[0]
+        assert "api.anysearch.com/v1/search" in str(first_call)
+
+
+@pytest.mark.asyncio
+async def test_collector_extract_fallback_to_search_content(mock_llm):
+    """When extract fails, Collector falls back to search content."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["feishu"]}',
+        model="test",
+    )
+
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Search returns content - use MagicMock (not AsyncMock) so await post() returns it directly
+        mock_search_response = MagicMock()
+        mock_search_response.status_code = 200
+        mock_search_response.json.return_value = {
+            "results": [
+                {
+                    "url": "https://www.feishu.cn/",
+                    "description": "飞书官网",
+                    "content": "飞书完整正文内容 from search",
+                    "title": "飞书官网"
+                }
+            ],
+            "metadata": {"total_results": 1}
+        }
+
+        # Extract returns empty
+        mock_extract_response = MagicMock()
+        mock_extract_response.status_code = 200
+        mock_extract_response.json.return_value = {"content": ""}
+
+        mock_client.post.side_effect = [mock_search_response, mock_extract_response]
+
+        result = await collector.run({"target": "feishu", "dimension": "features"})
+
+        assert result.success is True
+        output = result.output
+        # Should have content from search fallback
+        assert "飞书完整正文内容 from search" in output.get("content", "")
