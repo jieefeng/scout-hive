@@ -8,6 +8,13 @@ from app.agents.base import AgentResult
 from app.models.task import TaskStatus, Competitor
 
 
+@pytest.fixture(autouse=True)
+def clean_db():
+    """每个测试前重置数据库"""
+    StateManager.reset()
+    yield
+
+
 def _make_mvp_blueprint():
     """Simple DAG: Collector -> Analyst -> Writer for one competitor/dimension."""
     return DAGBlueprint(
@@ -48,30 +55,36 @@ async def test_execute_mvp_loads_default_schema():
     sm = StateManager()
     bus = EventBus()
 
-    # Mock agents
-    mock_collector = AsyncMock()
-    mock_collector.execute.return_value = AgentResult(
+    # Mock agents - use MagicMock for agent (not AsyncMock) because _build_trace is sync
+    mock_collector = MagicMock()
+    mock_collector.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"raw_data": {"items": [{"title": "功能A", "url": "http://example.com"}]}},
-    )
+    ))
+    mock_collector._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
-    mock_analyst = AsyncMock()
-    mock_analyst.execute.return_value = AgentResult(
+    mock_analyst = MagicMock()
+    mock_analyst.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"analysis": {"findings": ["功能A支持"]}},
-    )
+    ))
+    mock_analyst._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
-    mock_writer = AsyncMock()
-    mock_writer.execute.return_value = AgentResult(
+    mock_writer = MagicMock()
+    mock_writer.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"report_html": "<p>竞品A功能对比报告</p>"},
-    )
+    ))
+    mock_writer._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
+
+    mock_review = MagicMock()
+    mock_review.execute = AsyncMock(return_value=AgentResult(success=True, output={}))
 
     mock_agents = {
         "Collector": mock_collector,
         "Analyst": mock_analyst,
         "Writer": mock_writer,
-        "Reviewer": AsyncMock(),
+        "Reviewer": mock_review,
     }
 
     orch = Orchestrator(sm, bus, mock_agents)
@@ -109,29 +122,35 @@ async def test_execute_mvp_multi_competitor():
     sm = StateManager()
     bus = EventBus()
 
-    mock_collector = AsyncMock()
-    mock_collector.execute.return_value = AgentResult(
+    mock_collector = MagicMock()
+    mock_collector.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"raw_data": {"items": []}},
-    )
+    ))
+    mock_collector._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
-    mock_analyst = AsyncMock()
-    mock_analyst.execute.return_value = AgentResult(
+    mock_analyst = MagicMock()
+    mock_analyst.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"analysis": {"findings": []}},
-    )
+    ))
+    mock_analyst._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
-    mock_writer = AsyncMock()
-    mock_writer.execute.return_value = AgentResult(
+    mock_writer = MagicMock()
+    mock_writer.execute = AsyncMock(return_value=AgentResult(
         success=True,
         output={"report_html": "<p>Report content</p>"},
-    )
+    ))
+    mock_writer._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
+
+    mock_review = MagicMock()
+    mock_review.execute = AsyncMock(return_value=AgentResult(success=True, output={}))
 
     mock_agents = {
         "Collector": mock_collector,
         "Analyst": mock_analyst,
         "Writer": mock_writer,
-        "Reviewer": AsyncMock(),
+        "Reviewer": mock_review,
     }
 
     orch = Orchestrator(sm, bus, mock_agents)
