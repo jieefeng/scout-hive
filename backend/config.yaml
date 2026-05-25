@@ -1,6 +1,6 @@
 server:
   host: "0.0.0.0"
-  port: 7007
+  port: 5010
   debug: true
 
 llm:
@@ -8,7 +8,7 @@ llm:
   adapters:
     bailian:
       type: bailian
-      model: qwen3.6-plus-2026-04-02
+      model: qwen3.6-35b-a3b
       api_key: ${DASHSCOPE_API_KEY}
   agent_bindings:
     TaskParser: bailian
@@ -21,3 +21,9 @@ dag:
   max_feedback_rounds: 3
   node_timeout_seconds: 300
   max_retries: 3
+
+anysearch:
+  api_key: ""
+  search_timeout: 15
+  extract_timeout: 30
+  max_results_per_query: 5

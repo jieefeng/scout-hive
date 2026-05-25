@@ -37,14 +37,22 @@ class DAGConfig(BaseModel):
 
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
-    port: int = 7007
+    port: int = 5010
     debug: bool = False
+
+
+class AnySearchConfig(BaseModel):
+    api_key: str = ""
+    search_timeout: int = 15
+    extract_timeout: int = 30
+    max_results_per_query: int = 5
 
 
 class AppConfig(BaseModel):
     server: ServerConfig
     llm: LLMConfig
     dag: DAGConfig
+    anysearch: AnySearchConfig = AnySearchConfig()
 
 
 def load_config(config_path: str | None = None) -> AppConfig:
