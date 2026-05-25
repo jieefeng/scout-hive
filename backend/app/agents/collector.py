@@ -37,7 +37,7 @@ class Collector(AgentBase):
     async def _fetch_url(self, url: str) -> str:
         """Fetch a URL and extract main text content using trafilatura."""
         try:
-            async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:  # 10s fallback
                 resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 resp.raise_for_status()
                 text = trafilatura.extract(resp.text, include_comments=False, include_tables=True)
@@ -65,7 +65,8 @@ class Collector(AgentBase):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=config.search_timeout) as client:
+            timeout = getattr(config, 'search_timeout', 15)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -105,7 +106,8 @@ class Collector(AgentBase):
         payload = {"url": url}
 
         try:
-            async with httpx.AsyncClient(timeout=config.extract_timeout) as client:
+            timeout = getattr(config, 'extract_timeout', 30)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(api_url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -123,7 +125,7 @@ class Collector(AgentBase):
             return load_config().anysearch
         except Exception:
             from app.config import AnySearchConfig
-            return AnySearchConfig()
+            return AnySearchConfig(search_timeout=15, extract_timeout=30)
 
     async def execute(self, input_data: dict) -> AgentResult:
         target = input_data.get("target", "")
