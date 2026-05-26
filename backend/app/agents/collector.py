@@ -53,6 +53,7 @@ class Collector(AgentBase):
         url = "https://api.anysearch.com/v1/search"
 
         headers = {"Content-Type": "application/json"}
+        # AnySearch 支持匿名请求 (IP 免费配额)，无需 API Key
         if config.api_key:
             headers["Authorization"] = f"Bearer {config.api_key}"
 
@@ -71,7 +72,8 @@ class Collector(AgentBase):
                 resp.raise_for_status()
                 data = resp.json()
 
-            results_list = data.get("results", [])
+            # AnySearch 返回结构: {'code': 0, 'message': 'success', 'data': {'results': [...]}}
+            results_list = data.get("data", {}).get("results", [])
             if not results_list:
                 logger.warning(
                     f"AnySearch returned no results for query: {query}, "
@@ -87,36 +89,20 @@ class Collector(AgentBase):
                     "title": r.get("title", ""),
                 })
 
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                logger.error(
+                    f"AnySearch API认证失败 (401). 请检查 anysearch.api_key 配置是否正确."
+                    f" 提示: 需要在 config.yaml 或环境变量中配置有效的 AnySearch API Key."
+                )
+            else:
+                logger.warning(f"AnySearch HTTP error for query '{query}': {e}")
         except httpx.HTTPError as e:
             logger.warning(f"AnySearch HTTP error for query '{query}': {e}")
         except Exception as e:
             logger.warning(f"AnySearch search failed for '{query}': {e}")
 
         return results
-
-    async def _extract_anysearch(self, url: str) -> str:
-        """Extract full page content using AnySearch Extract API."""
-        config = self._get_anysearch_config()
-        api_url = "https://api.anysearch.com/v1/extract"
-
-        headers = {"Content-Type": "application/json"}
-        if config.api_key:
-            headers["Authorization"] = f"Bearer {config.api_key}"
-
-        payload = {"url": url}
-
-        try:
-            timeout = getattr(config, 'extract_timeout', 30)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(api_url, json=payload, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-                return data.get("content", "")
-        except httpx.HTTPError as e:
-            logger.warning(f"AnySearch extract HTTP error for '{url}': {e}")
-        except Exception as e:
-            logger.warning(f"AnySearch extract failed for '{url}': {e}")
-        return ""
 
     def _get_anysearch_config(self):
         """Get AnySearch configuration from app config."""
@@ -163,18 +149,16 @@ class Collector(AgentBase):
                 if r["url"] not in target_urls:
                     target_urls.append(r["url"])
 
-        # Phase 2: Fetch and extract content from top URLs (prefer AnySearch extract, fallback to httpx)
+        # Phase 2: Fetch and extract content from top URLs (direct HTTP with trafilatura)
         collected_texts = []
         sources = []
         # Build a map of url -> search_result for fallback
         url_to_search_result = {r["url"]: r for r in all_search_results}
 
         for url in target_urls[:5]:  # limit to 5 URLs
-            # Try AnySearch extract first (better markdown conversion)
-            text = await self._extract_anysearch(url)
-            if not text:
-                search_result = url_to_search_result.get(url, {})
-                text = search_result.get("content", "")
+            # Use content from search result if available
+            search_result = url_to_search_result.get(url, {})
+            text = search_result.get("content", "")
             if not text:
                 # Fallback to direct HTTP fetch
                 text = await self._fetch_url(url)

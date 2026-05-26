@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { TaskSummary, WSEvent } from '../types';
-import { fetchTasks, fetchTask } from '../api/client';
+import { fetchTasks, fetchTask, deleteTask as apiDeleteTask } from '../api/client';
 
 interface TaskStore {
   tasks: TaskSummary[];
@@ -9,6 +9,7 @@ interface TaskStore {
   loading: boolean;
   loadTasks: () => Promise<void>;
   loadTask: (taskId: string) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
   addWSEvent: (event: WSEvent) => void;
 }
 
@@ -24,8 +25,16 @@ export const useTaskStore = create<TaskStore>((set) => ({
   },
   loadTask: async (taskId: string) => {
     set({ loading: true });
-    const task = await fetchTask(taskId);
-    set({ currentTask: task, loading: false });
+    try {
+      const task = await fetchTask(taskId);
+      set({ currentTask: task, loading: false });
+    } catch {
+      set({ currentTask: null, loading: false });
+    }
+  },
+  deleteTask: async (taskId: string) => {
+    await apiDeleteTask(taskId);
+    set((state) => ({ tasks: state.tasks.filter(t => t.task_id !== taskId) }));
   },
   addWSEvent: (event: WSEvent) => {
     set((state) => ({ wsEvents: [...state.wsEvents, event] }));

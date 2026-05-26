@@ -2,7 +2,7 @@ import urllib.request, urllib.error, json, sys
 
 data = json.dumps({"message": "分析抖音和快手"}).encode()
 req = urllib.request.Request(
-    "http://localhost:8000/api/tasks/",
+    "http://localhost:5010/api/tasks/",
     data=data,
     headers={"Content-Type": "application/json"},
 )
@@ -19,7 +19,7 @@ try:
     for i in range(30):
         time.sleep(2)
         req2 = urllib.request.Request(
-            f"http://localhost:8001/api/tasks/{result['task_id']}",
+            f"http://localhost:5010/api/tasks/{result['task_id']}",
             headers={},
         )
         resp2 = urllib.request.urlopen(req2, timeout=10)

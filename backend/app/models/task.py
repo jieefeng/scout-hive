@@ -15,6 +15,7 @@ class NodeStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    REJECTED = "rejected"
     SKIPPED = "skipped"
 
 

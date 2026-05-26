@@ -112,6 +112,16 @@ async def list_tasks():
     return [TaskResponse(**t.model_dump()) for t in tasks]
 
 
+@router.delete("/{task_id}")
+async def delete_task(task_id: str):
+    """删除指定任务。"""
+    task = state_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    state_manager.delete_task(task_id)
+    return {"ok": True}
+
+
 @router.post("/{task_id}/stop")
 async def stop_task(task_id: str):
     """停止指定任务的执行。"""

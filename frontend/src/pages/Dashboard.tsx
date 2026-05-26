@@ -12,13 +12,16 @@ interface CompetitorEntry {
 function isValidDomain(domain: string): boolean {
   const d = domain.trim();
   if (!d) return false;
-  if (d.includes('/') || d.includes(':') || d.includes('?')) return false;
-  if (d.endsWith('.')) return false;
-  return /^[a-zA-Z0-9][a-zA-Z0-9\-]*(\.[a-zA-Z]{2,})+$/.test(d);
+  // Strip protocol prefix if present
+  const normalized = d.replace(/^(https?:\/\/)?(www\.)?/, '');
+  if (!normalized) return false;
+  if (normalized.includes('/') || normalized.includes(':') || normalized.includes('?')) return false;
+  if (normalized.endsWith('.')) return false;
+  return /^[a-zA-Z0-9][a-zA-Z0-9\-]*(\.[a-zA-Z]{2,})+$/.test(normalized);
 }
 
 export default function Dashboard() {
-  const { tasks, loading, loadTasks } = useTaskStore();
+  const { tasks, loading, loadTasks, deleteTask } = useTaskStore();
   const [competitors, setCompetitors] = useState<CompetitorEntry[]>([
     { id: '1', name: '', domain: '' },
   ]);
@@ -31,9 +34,6 @@ export default function Dashboard() {
     setCompetitors(prev => [...prev, { id: crypto.randomUUID(), name: '', domain: '' }]);
   };
 
-  const removeCompetitor = (id: string) => {
-    setCompetitors(prev => prev.filter(c => c.id !== id));
-  };
 
   const updateCompetitor = (id: string, field: 'name' | 'domain', value: string) => {
     setCompetitors(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
@@ -41,6 +41,16 @@ export default function Dashboard() {
 
   const validCompetitors = competitors.filter(c => c.name.trim() && isValidDomain(c.domain.trim()));
   const canCreate = validCompetitors.length > 0;
+
+  const handleDelete = async (taskId: string) => {
+    if (!confirm('确定要删除该任务吗？')) return;
+    try {
+      await deleteTask(taskId);
+    } catch (err) {
+      console.error('删除任务失败:', err);
+      alert('删除任务失败');
+    }
+  };
 
   const handleCreate = async () => {
     if (!canCreate) return;
@@ -81,13 +91,6 @@ export default function Dashboard() {
                 placeholder="域名，例如：feishu.cn"
                 style={{ flex: 1, padding: '0.75rem', fontSize: '1rem', border: comp.domain && !isValidDomain(comp.domain) ? '1px solid #e53935' : '1px solid #ccc', borderRadius: '6px', outline: 'none' }}
               />
-              <button
-                onClick={() => removeCompetitor(comp.id)}
-                disabled={competitors.length === 1}
-                style={{ padding: '0.5rem 0.75rem', fontSize: '0.9rem', background: competitors.length === 1 ? '#eee' : '#e53935', color: '#fff', border: 'none', borderRadius: '6px', cursor: competitors.length === 1 ? 'not-allowed' : 'pointer' }}
-              >
-                删除
-              </button>
             </div>
           ))}
           <button
@@ -128,11 +131,21 @@ export default function Dashboard() {
         <div>
           {tasks.length === 0 && <p style={{ color: '#999' }}>暂无任务，请在上方创建新任务</p>}
           {tasks.map(task => (
-            <div key={task.task_id} style={{ padding: '1rem', border: '1px solid #ddd', marginBottom: '0.5rem', borderRadius: '4px' }}>
-              <Link to={`/task/${task.task_id}`}>
+            <div key={task.task_id} style={{ padding: '1rem', border: '1px solid #ddd', marginBottom: '0.5rem', borderRadius: '4px', display: 'flex', alignItems: 'center' }}>
+              <Link to={`/task/${task.task_id}`} style={{ flex: 1 }}>
                 任务 {task.task_id.slice(0, 8)} — {task.status}
               </Link>
               <span style={{ marginLeft: '1rem', color: '#666' }}>{task.competitors.map(c => c.name).join(', ')}</span>
+              <button
+                onClick={() => handleDelete(task.task_id)}
+                style={{
+                  marginLeft: '1rem', padding: '0.3rem 0.75rem', fontSize: '0.85rem',
+                  background: '#fff', color: '#e53935', border: '1px solid #e53935',
+                  borderRadius: '4px', cursor: 'pointer',
+                }}
+              >
+                删除
+              </button>
             </div>
           ))}
         </div>

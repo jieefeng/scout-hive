@@ -48,9 +48,10 @@ min_sources 降级规则（分析时使用）：
     async def execute(self, input_data: dict) -> AgentResult:
         evidence_threshold = input_data.get("evidence_threshold", 1)
         raw_data = input_data.get("raw_data", {})
+        sources = input_data.get("sources", [])
 
         # 代码层计算 source 数量
-        source_count = self._count_sources(raw_data)
+        source_count = self._count_sources(raw_data, sources)
 
         # 代码层确定 confidence 级别
         if source_count >= evidence_threshold:
@@ -84,7 +85,18 @@ min_sources 降级规则（分析时使用）：
         ]
         llm_response = await self.chat(messages)
         try:
-            parsed = json.loads(llm_response.content)
+            raw = llm_response.content
+            # Strip markdown code fences if present (common LLM output pattern)
+            raw = raw.strip()
+            if raw.startswith("```"):
+                # Remove first ```json or ``` line
+                lines = raw.split("\n")
+                if lines and lines[0].strip().startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
+                raw = "\n".join(lines)
+            parsed = json.loads(raw)
         except json.JSONDecodeError as e:
             return AgentResult(
                 success=False,
@@ -127,15 +139,15 @@ min_sources 降级规则（分析时使用）：
             reasoning_chain=reasoning_chain, sources=sources, confidence=best_confidence,
         )
 
-    def _count_sources(self, raw_data: dict) -> int:
-        """计算 raw_data 中独立来源的数量"""
-        if not raw_data:
-            return 0
-        sources = raw_data.get("sources", [])
-        if isinstance(sources, list):
+    def _count_sources(self, raw_data: dict, sources: list | None = None) -> int:
+        """计算独立来源的数量。优先用 orchestrator 传入的 sources，否则从 raw_data 推断。"""
+        # 优先：orchestrator 从 Collector 的 AgentResult.sources 传入
+        if sources and isinstance(sources, list):
             return len(sources)
-        chunks = raw_data.get("chunks", [])
-        if isinstance(chunks, list):
-            urls = set(c.get("url", "") for c in chunks if c.get("url"))
-            return len(urls)
+        # 兜底：raw_data 中有实际内容（source_url 非空且 content 非空）视为 1 条来源
+        if raw_data and isinstance(raw_data, dict):
+            source_url = raw_data.get("source_url", "")
+            content = raw_data.get("content", "")
+            if source_url and content and "未能采集到" not in content:
+                return 1
         return 0

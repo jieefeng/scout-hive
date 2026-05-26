@@ -48,7 +48,9 @@ def test_add_trace():
     sm.create_task("t001", [Competitor(name="竞品A", domain="example.com")], ["功能对比"], {"nodes": [], "edges": []})
     sm.add_trace("t001", {"trace_id": "tr001", "agent": "Collector"})
     task = sm.get_task("t001")
-    assert task.traces == []
+    assert len(task.traces) == 1
+    assert task.traces[0]["trace_id"] == "tr001"
+    assert task.traces[0]["agent"] == "Collector"
 
 
 def test_cancel_task():

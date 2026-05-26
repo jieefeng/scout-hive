@@ -37,12 +37,26 @@ class StateManager:
                 node_states   TEXT NOT NULL DEFAULT '{}',
                 created_at    TEXT NOT NULL,
                 report_html   TEXT NOT NULL DEFAULT '',
-                cancelled     INTEGER NOT NULL DEFAULT 0  -- 0=正常, 1=用户请求停止
+                traces        TEXT NOT NULL DEFAULT '[]',
+                reviews       TEXT NOT NULL DEFAULT '[]',
+                cancelled     INTEGER NOT NULL DEFAULT 0
             )
         """)
         # Add cancelled column if upgrading from older schema (graceful migration)
         try:
             self._conn.execute("ALTER TABLE tasks ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        # Add traces column if upgrading from older schema (graceful migration)
+        try:
+            self._conn.execute("ALTER TABLE tasks ADD COLUMN traces TEXT NOT NULL DEFAULT '[]'")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        # Add reviews column if upgrading from older schema (graceful migration)
+        try:
+            self._conn.execute("ALTER TABLE tasks ADD COLUMN reviews TEXT NOT NULL DEFAULT '[]'")
             self._conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
@@ -59,8 +73,8 @@ class StateManager:
             created_at=row["created_at"],
             updated_at=row["created_at"],
             report_html=row["report_html"],
-            traces=[],
-            reviews=[],
+            traces=json.loads(row["traces"] or "[]"),
+            reviews=json.loads(row["reviews"] or "[]"),
             cancelled=bool(row["cancelled"]),
         )
 
@@ -86,10 +100,10 @@ class StateManager:
             reviews=[],
         )
         self._conn.execute(
-            """INSERT INTO tasks (task_id, status, competitors, dimensions, dag_json, node_states, created_at, report_html)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO tasks (task_id, status, competitors, dimensions, dag_json, node_states, created_at, report_html, traces, reviews)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, task.status.value, json.dumps([c.model_dump() for c in competitors]),
-             json.dumps(dimensions), json.dumps(dag_json), json.dumps({}), now, ""),
+             json.dumps(dimensions), json.dumps(dag_json), json.dumps({}), now, "", json.dumps([]), json.dumps([])),
         )
         self._conn.commit()
         return task
@@ -119,16 +133,51 @@ class StateManager:
             self._conn.commit()
 
     def add_trace(self, task_id: str, trace: dict):
-        # Not persisted in this simplified schema
-        pass
+        row = self._conn.execute("SELECT traces FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row:
+            traces = json.loads(row["traces"] or "[]")
+            traces.append(trace)
+            self._conn.execute(
+                "UPDATE tasks SET traces = ? WHERE task_id = ?",
+                (json.dumps(traces), task_id),
+            )
+            self._conn.commit()
 
     def add_review(self, task_id: str, review: dict):
-        # Not persisted in this simplified schema
-        pass
+        row = self._conn.execute("SELECT reviews FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row:
+            reviews = json.loads(row["reviews"] or "[]")
+            reviews.append(review)
+            self._conn.execute(
+                "UPDATE tasks SET reviews = ? WHERE task_id = ?",
+                (json.dumps(reviews), task_id),
+            )
+            self._conn.commit()
+
+    def get_reviews(self, task_id: str) -> list[dict]:
+        """Get all reviews for a task."""
+        row = self._conn.execute("SELECT reviews FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row:
+            return json.loads(row["reviews"] or "[]")
+        return []
+
+    def get_review(self, task_id: str, node_id: str) -> dict | None:
+        """Get the most recent review for a specific node."""
+        reviews = self.get_reviews(task_id)
+        for review in reversed(reviews):
+            if review.get("node_id") == node_id:
+                return review
+        return None
 
     def set_report(self, task_id: str, html: str):
         self._conn.execute("UPDATE tasks SET report_html = ? WHERE task_id = ?", (html, task_id))
         self._conn.commit()
+
+    def delete_task(self, task_id: str) -> bool:
+        """删除指定任务。返回是否成功（任务存在）。"""
+        cursor = self._conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+        self._conn.commit()
+        return cursor.rowcount > 0
 
     def clear_all(self):
         """清除所有任务（仅用于测试）"""
@@ -146,6 +195,11 @@ class StateManager:
     def reset(cls):
         """重置单例（测试用）"""
         if cls._instance is not None and cls._instance._conn:
+            try:
+                cls._instance._conn.execute("DELETE FROM tasks")
+                cls._instance._conn.commit()
+            except Exception:
+                pass
             cls._instance._conn.close()
         cls._instance = None
         db_path = Path(cls._db_path)

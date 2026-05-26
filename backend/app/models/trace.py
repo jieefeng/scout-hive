@@ -20,9 +20,10 @@ class TraceRecord(BaseModel):
     node_id: str
     agent: str
     timestamp: str | None = None
-    input_refs: list[str] = Field(default_factory=list)
+    input_refs: dict = Field(default_factory=dict)
     output: dict = Field(default_factory=dict)
     reasoning_chain: list[dict] = Field(default_factory=list)
     sources: list[TraceSource] = Field(default_factory=list)
     confidence: dict = Field(default_factory=dict)
     llm_metadata: LLMMetadata = Field(default_factory=LLMMetadata)
+    revision_round: int = 0  # 反馈迭代轮次，0=初始，1+=反馈循环

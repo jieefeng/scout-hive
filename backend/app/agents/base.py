@@ -94,7 +94,7 @@ class AgentBase(ABC):
             node_id=node_id,
             agent=self.name,
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            input_refs=[],
+            input_refs=input_data,
             output=output,
             reasoning_chain=reasoning_chain or [],
             sources=sources or [],

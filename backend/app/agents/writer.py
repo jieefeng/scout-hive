@@ -51,7 +51,17 @@ class Writer(AgentBase):
         ]
         llm_response = await self.chat(messages)
         try:
-            parsed = json.loads(llm_response.content)
+            raw = llm_response.content
+            # Strip markdown code fences if present (common LLM output pattern)
+            raw = raw.strip()
+            if raw.startswith("```"):
+                lines = raw.split("\n")
+                if lines and lines[0].strip().startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
+                raw = "\n".join(lines)
+            parsed = json.loads(raw)
         except json.JSONDecodeError as e:
             return AgentResult(
                 success=False,

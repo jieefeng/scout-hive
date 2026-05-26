@@ -148,55 +148,73 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      {/* Agent Detail Drawer — slides in from right */}
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        right: panelOpen ? 0 : '-480px',
-        width: '460px',
-        height: '100vh',
-        background: '#fff',
-        borderLeft: '1px solid #e2e8f0',
-        boxShadow: panelOpen ? '-4px 0 24px rgba(0,0,0,0.1)' : 'none',
-        transition: 'right 0.3s cubic-bezier(0.4,0,0.2,1)',
-        zIndex: 100,
-        overflow: 'auto',
-      }}>
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'sticky',
-          top: 0,
-          background: '#fff',
-          zIndex: 1,
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Agent 详情</h2>
-          <button
+      {/* Agent Detail Modal — centered, animated */}
+      {panelOpen && (
+        <>
+          <div
             onClick={closePanel}
             style={{
-              background: 'none', border: '1px solid #e2e8f0', borderRadius: '6px',
-              padding: '4px 10px', cursor: 'pointer', fontSize: '0.85rem', color: '#64748b',
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)',
+              zIndex: 99, animation: 'modalFadeIn 0.2s ease',
             }}
-          >
-            关闭
-          </button>
-        </div>
-        <AgentDetail trace={selectedTrace} nodeId={selectedNodeId} />
-      </div>
-
-      {/* Overlay when panel open */}
-      {panelOpen && (
-        <div
-          onClick={closePanel}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.15)', zIndex: 99,
-          }}
-        />
+          />
+          <div style={{
+            position: 'fixed',
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(920px, 92vw)',
+            maxHeight: '85vh',
+            background: '#fff',
+            borderRadius: '16px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05)',
+            zIndex: 100,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'modalSlideIn 0.25s ease',
+          }}>
+            <div style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              position: 'sticky', top: 0,
+              background: '#fff',
+              borderRadius: '16px 16px 0 0',
+              zIndex: 1,
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#1e293b' }}>
+                节点详情
+              </h2>
+              <button
+                onClick={closePanel}
+                style={{
+                  width: '32px', height: '32px', borderRadius: '8px',
+                  background: '#f1f5f9', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.1rem', color: '#64748b', lineHeight: 1,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#e2e8f0')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#f1f5f9')}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ overflow: 'auto', flex: 1 }}>
+              <AgentDetail trace={selectedTrace} nodeId={selectedNodeId} />
+            </div>
+          </div>
+        </>
       )}
+
+      {/* Modal animations */}
+      <style>{`
+        @keyframes modalFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes modalSlideIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+      `}</style>
 
       {/* Below-the-fold sections */}
       <div style={{ marginTop: '2rem' }}>

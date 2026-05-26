@@ -51,6 +51,12 @@ class Orchestrator:
                 self.sm.set_report(task_id, result.output["report_html"])
             if node.agent == "Reviewer" and result.output:
                 self.sm.add_review(task_id, result.output)
+                # Set REJECTED if verdict is rejected, otherwise COMPLETED
+                verdict = result.output.get("verdict", "")
+                if verdict == "rejected":
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.REJECTED)
+                else:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.COMPLETED)
             await self.bus.publish(Event(type="node_completed", task_id=task_id, node_id=node.id, data=result.output))
         else:
             self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
@@ -132,16 +138,27 @@ class Orchestrator:
             return
 
         for fe in blueprint.feedback_edges:
-            from_status = self.sm.get_task(task_id).node_states.get(fe.from_node)
-            if from_status == NodeStatus.FAILED:
+            review = self.sm.get_review(task_id, fe.from_node)
+            if review and review.get("verdict") == "rejected":
                 rounds = feedback_round.get(fe.from_node, 0)
                 if rounds < fe.max_rounds:
                     feedback_round[fe.from_node] = rounds + 1
-                    self.sm.update_node_status(task_id, fe.to_node, NodeStatus.PENDING)
+                    # Mark the rejected node as PENDING to re-run the feedback loop
                     self.sm.update_node_status(task_id, fe.from_node, NodeStatus.PENDING)
+                    # Mark the Writer node as PENDING for rewrite
+                    self.sm.update_node_status(task_id, fe.to_node, NodeStatus.PENDING)
+                    # Add revision_round to trace
+                    revision_trace = {
+                        "node_id": fe.to_node,
+                        "agent": "FeedbackLoop",
+                        "revision_round": rounds + 1,
+                        "feedback_message": review.get("feedback_message", ""),
+                        "feedback_to": review.get("feedback_to", ""),
+                    }
+                    self.sm.add_trace(task_id, revision_trace)
                     await self.bus.publish(Event(
                         type="review_feedback", task_id=task_id, node_id=fe.from_node,
-                        data={"round": rounds + 1, "target": fe.to_node},
+                        data={"round": rounds + 1, "target": fe.to_node, "feedback": review},
                     ))
                     await self.execute_dag(task_id, blueprint)
                 else:
@@ -207,19 +224,22 @@ class Orchestrator:
                     "tracking_sources": dim_cfg.get("tracking_sources", ["web"]),
                 }
                 result = await collector.execute(input_data)
-                results[(comp_name, dim_name)] = {"raw_data": result.output}
+                results[(comp_name, dim_name)] = {"raw_data": result.output, "sources": result.sources}
 
             elif node.agent == "Analyst":
                 analyst = self.agents.get("Analyst")
                 if not analyst:
                     self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
                     continue
-                raw = results.get((comp_name, dim_name), {}).get("raw_data", {})
+                stored = results.get((comp_name, dim_name), {})
+                raw = stored.get("raw_data", {})
+                sources = stored.get("sources", [])
                 input_data = {
                     "competitor": comp_name,
                     "dimension": dim_name,
                     "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
                     "raw_data": raw,
+                    "sources": sources,
                 }
                 result = await analyst.execute(input_data)
                 results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})

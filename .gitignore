@@ -12,3 +12,24 @@ build/
 .venv/
 venv/
 .env
+.env.*
+
+# Node
+node_modules/
+frontend/dist/
+
+# SQLite
+backend/data/tasks.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json

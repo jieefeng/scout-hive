@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { ReactFlow, Background, Controls, type Node, type Edge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, Handle, Position, type Node, type Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 interface DagEdge { from_node?: string; from?: string; to_node?: string; to?: string; }
@@ -27,10 +27,63 @@ const STATUS_ICONS: Record<string, string> = {
   pending: '⏳', running: '🔄', completed: '✅', failed: '❌', skipped: '⏭️',
 };
 
-const NODE_W = 200;
-const NODE_H = 90;
-const COL_GAP = 80;
-const ROW_GAP = 60;
+const NODE_W = 160;
+const NODE_H = 80;
+const COL_GAP = 60;
+const ROW_GAP = 50;
+
+interface DagNodeComponentProps {
+  data: {
+    label: string;
+    agent?: string;
+    dimension?: string;
+    competitor?: string;
+    status?: string;
+  };
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  Collector: "数据采集",
+  Analyst: "结构分析",
+  Writer: "报告写作",
+  Reviewer: "质量审查",
+};
+
+function DagNodeComponent({ data }: DagNodeComponentProps) {
+  const { label, agent, dimension, competitor, status } = data;
+
+  // Parse node ID: c_竞品_维度 / a_竞品_维度 / w_竞品_维度
+  // First char is agent prefix: c=Collector, a=Analyst, w=Writer
+  const agentMap: Record<string, string> = { c: "Collector", a: "Analyst", w: "Writer" };
+  const prefix = label.split("_")[0];
+  const agentName = agentMap[prefix] || agent || label;
+
+  // Extract competitor and dimension from label
+  const parts = label.split("_");
+  const competitorName = competitor || (parts.length >= 2 ? parts[1] : "");
+  const dimensionName = dimension || (parts.length >= 3 ? parts.slice(2).join("_") : "");
+
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
+      <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+        <div style={{ fontSize: '1.3rem', marginBottom: '2px' }}>{STATUS_ICONS[status] || '⏳'}</div>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e293b', marginBottom: '2px', whiteSpace: 'nowrap' }}>
+          {AGENT_LABELS[agentName] || agentName}
+        </div>
+        {dimensionName && (
+          <div style={{ fontSize: '0.6rem', color: '#64748b', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>{dimensionName}</div>
+        )}
+        {competitorName && (
+          <div style={{ fontSize: '0.55rem', color: '#94a3b8', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>{competitorName}</div>
+        )}
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
+    </>
+  );
+}
+
+const NODE_TYPES = { default: DagNodeComponent };
 
 export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selectedNodeId }: DagViewerProps) {
   const nodes: Node[] = useMemo(() => {
@@ -45,21 +98,39 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
       const status = nodeStates[id] || 'pending';
       const isSelected = id === selectedNodeId;
 
+      // Extract agent and dimension from node ID or dagBlueprint
+      let agentName = '';
+      let dimensionName = '';
+      if (dagBlueprint?.nodes) {
+        const node = dagBlueprint.nodes.find(n => n.id === id);
+        if (node) {
+          agentName = node.agent || '';
+          dimensionName = node.params?.dimension || '';
+        }
+      }
+      if (!agentName && !dimensionName) {
+        // Fallback: parse from ID like c_飞书_功能对比
+        const prefix = id.split('_')[0];
+        const agentMap: Record<string, string> = { c: 'Collector', a: 'Analyst', w: 'Writer', r: 'Reviewer' };
+        agentName = agentMap[prefix] || '';
+        const parts = id.split('_');
+        dimensionName = parts.length >= 3 ? parts.slice(2).join('_') : '';
+      }
+
       return {
         id,
+        type: 'default',
         position: {
           x: (NODE_W + COL_GAP) * (index % cols),
           y: (NODE_H + ROW_GAP) * Math.floor(index / cols),
         },
-        data: { label: id },
-        width: NODE_W,
-        height: NODE_H,
+        data: { label: id, agent: agentName, dimension: dimensionName, status: nodeStates[id] || 'pending' },
         style: {
           width: NODE_W,
           height: NODE_H,
           border: `2px solid ${isSelected ? '#1d4ed8' : STATUS_COLORS[status] || '#94a3b8'}`,
           borderRadius: '12px',
-          padding: '12px 14px',
+          padding: '8px 10px',
           background: isSelected ? '#dbeafe' : (STATUS_BG[status] || '#f8fafc'),
           boxShadow: isSelected
             ? '0 0 0 3px rgba(59,130,246,0.3), 0 4px 12px rgba(0,0,0,0.1)'
@@ -77,13 +148,11 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
   const edges: Edge[] = useMemo(() => {
     const allEdges: { source: string; target: string; dashed?: boolean }[] = [];
 
-    // Priority 1: explicit edges from blueprint
     if (dagBlueprint?.edges && dagBlueprint.edges.length > 0) {
       for (const e of dagBlueprint.edges) {
         allEdges.push({ source: e.from_node || e.from || '', target: e.to_node || e.to || '' });
       }
     } else if (dagBlueprint?.nodes && dagBlueprint.nodes.length > 0) {
-      // Priority 2: derive edges from depends_on
       for (const node of dagBlueprint.nodes) {
         for (const dep of node.depends_on || []) {
           allEdges.push({ source: dep, target: node.id });
@@ -91,7 +160,6 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
       }
     }
 
-    // Priority 3: sequential fallback from nodeStates
     if (allEdges.length === 0) {
       const ids = Object.keys(nodeStates);
       for (let i = 0; i < ids.length - 1; i++) {
@@ -99,7 +167,6 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
       }
     }
 
-    // Add feedback edges (dashed)
     if (dagBlueprint?.feedback_edges) {
       for (const fe of dagBlueprint.feedback_edges) {
         allEdges.push({ source: fe.from_node || fe.from || '', target: fe.to_node || fe.to || '', dashed: true });
@@ -116,8 +183,8 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
         target: e.target,
         animated: isAnimated,
         style: {
-          stroke: isCompleted ? '#22c55e' : isAnimated ? '#3b82f6' : '#cbd5e1',
-          strokeWidth: isCompleted || isAnimated ? 2.5 : 1.5,
+          stroke: isCompleted ? '#22c55e' : isAnimated ? '#3b82f6' : '#64748b',
+          strokeWidth: isCompleted || isAnimated ? 2.5 : 2,
           strokeDasharray: e.dashed ? '5 5' : undefined,
         },
       };
@@ -129,38 +196,17 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
     [onNodeClick],
   );
 
-  // Custom node rendering
-  const nodeTypes = useMemo(() => ({
-    default: ({ data }: { data: { label: string } }) => {
-      const nodeId = data.label;
-      const status = nodeStates[nodeId] || 'pending';
-      const bpNode = dagBlueprint?.nodes?.find(n => n.id === nodeId);
-      return (
-        <div style={{ textAlign: 'center', lineHeight: 1.3 }}>
-          <div style={{ fontSize: '1.4rem', marginBottom: '2px' }}>{STATUS_ICONS[status] || '⏳'}</div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#1e293b', wordBreak: 'break-all' }}>{nodeId}</div>
-          {bpNode && <div style={{ fontSize: '0.6rem', color: '#64748b', marginTop: '2px' }}>{bpNode.agent}</div>}
-        </div>
-      );
-    },
-  }), [nodeStates, dagBlueprint]);
-
-  console.log('[DagViewer] FINAL nodes:', nodes.map(n => ({ id: n.id, w: n.width, h: n.height, x: n.position.x, y: n.position.y })));
-  console.log('[DagViewer] FINAL edges:', edges.map(e => ({ id: e.id, src: e.source, tgt: e.target })));
-  console.log('[DagViewer] dagBlueprint:', dagBlueprint ? { nodes: dagBlueprint.nodes?.length, edges: dagBlueprint.edges?.length } : 'null');
-
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '500px' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodeClick={handleNodeClick}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.15 }}
         minZoom={0.3}
         maxZoom={2}
-        defaultEdgeOptions={{ type: 'default' }}
       >
         <Background gap={20} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />
