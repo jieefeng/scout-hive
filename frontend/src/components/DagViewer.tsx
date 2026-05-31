@@ -3,7 +3,7 @@ import { ReactFlow, Background, Controls, Handle, Position, type Node, type Edge
 import '@xyflow/react/dist/style.css';
 
 interface DagEdge { from_node?: string; from?: string; to_node?: string; to?: string; }
-interface DagNode { id: string; agent: string; action: string; depends_on?: string[]; }
+interface DagNode { id: string; agent: string; action: string; depends_on?: string[]; params?: { dimension?: string } }
 interface DagBlueprint { nodes?: DagNode[]; edges?: DagEdge[]; feedback_edges?: DagEdge[]; }
 
 interface DagViewerProps {
@@ -27,10 +27,10 @@ const STATUS_ICONS: Record<string, string> = {
   pending: '⏳', running: '🔄', completed: '✅', failed: '❌', skipped: '⏭️',
 };
 
-const NODE_W = 160;
-const NODE_H = 80;
-const COL_GAP = 60;
-const ROW_GAP = 50;
+const NODE_W = 170;
+const NODE_H = 88;
+const COL_GAP = 64;
+const ROW_GAP = 56;
 
 interface DagNodeComponentProps {
   data: {
@@ -49,33 +49,46 @@ const AGENT_LABELS: Record<string, string> = {
   Reviewer: "质量审查",
 };
 
+const AGENT_ACCENT: Record<string, string> = {
+  Collector: '#3b82f6',
+  Analyst: '#8b5cf6',
+  Writer: '#10b981',
+  Reviewer: '#f59e0b',
+};
+
 function DagNodeComponent({ data }: DagNodeComponentProps) {
   const { label, agent, dimension, competitor, status } = data;
 
-  // Parse node ID: c_竞品_维度 / a_竞品_维度 / w_竞品_维度
-  // First char is agent prefix: c=Collector, a=Analyst, w=Writer
-  const agentMap: Record<string, string> = { c: "Collector", a: "Analyst", w: "Writer" };
+  const agentMap: Record<string, string> = { c: "Collector", a: "Analyst", w: "Writer", r: "Reviewer" };
   const prefix = label.split("_")[0];
   const agentName = agentMap[prefix] || agent || label;
 
-  // Extract competitor and dimension from label
   const parts = label.split("_");
   const competitorName = competitor || (parts.length >= 2 ? parts[1] : "");
   const dimensionName = dimension || (parts.length >= 3 ? parts.slice(2).join("_") : "");
+
+  const accent = AGENT_ACCENT[agentName] || '#64748b';
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
       <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
-        <div style={{ fontSize: '1.3rem', marginBottom: '2px' }}>{STATUS_ICONS[status] || '⏳'}</div>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1e293b', marginBottom: '2px', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: '1.3rem', marginBottom: '3px' }}>{STATUS_ICONS[status] || '⏳'}</div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e293b', marginBottom: '3px', whiteSpace: 'nowrap' }}>
           {AGENT_LABELS[agentName] || agentName}
         </div>
         {dimensionName && (
-          <div style={{ fontSize: '0.6rem', color: '#64748b', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>{dimensionName}</div>
+          <div style={{
+            fontSize: '0.6rem', color: accent, maxWidth: '150px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto',
+            fontWeight: 600,
+          }}>{dimensionName}</div>
         )}
         {competitorName && (
-          <div style={{ fontSize: '0.55rem', color: '#94a3b8', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto' }}>{competitorName}</div>
+          <div style={{
+            fontSize: '0.55rem', color: '#94a3b8', maxWidth: '150px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto',
+          }}>{competitorName}</div>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
@@ -129,17 +142,17 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
           width: NODE_W,
           height: NODE_H,
           border: `2px solid ${isSelected ? '#1d4ed8' : STATUS_COLORS[status] || '#94a3b8'}`,
-          borderRadius: '12px',
+          borderRadius: '14px',
           padding: '8px 10px',
           background: isSelected ? '#dbeafe' : (STATUS_BG[status] || '#f8fafc'),
           boxShadow: isSelected
-            ? '0 0 0 3px rgba(59,130,246,0.3), 0 4px 12px rgba(0,0,0,0.1)'
+            ? '0 0 0 3px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.12)'
             : status === 'running'
-              ? '0 0 12px rgba(59,130,246,0.3), 0 2px 8px rgba(0,0,0,0.06)'
-              : '0 2px 8px rgba(0,0,0,0.06)',
-          animation: status === 'running' ? 'dag-pulse 2s ease-in-out infinite' : 'none',
+              ? '0 0 16px rgba(59,130,246,0.25), 0 2px 8px rgba(0,0,0,0.06)'
+              : '0 2px 8px rgba(0,0,0,0.05)',
+          animation: status === 'running' ? 'dag-glow 2s ease-in-out infinite' : 'none',
           cursor: 'pointer',
-          transition: 'box-shadow 0.2s, border-color 0.2s',
+          transition: 'box-shadow 0.2s, border-color 0.2s, transform 0.15s',
         },
       };
     });
@@ -183,9 +196,9 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
         target: e.target,
         animated: isAnimated,
         style: {
-          stroke: isCompleted ? '#22c55e' : isAnimated ? '#3b82f6' : '#64748b',
-          strokeWidth: isCompleted || isAnimated ? 2.5 : 2,
-          strokeDasharray: e.dashed ? '5 5' : undefined,
+          stroke: isCompleted ? '#22c55e' : isAnimated ? '#3b82f6' : '#94a3b8',
+          strokeWidth: isCompleted || isAnimated ? 2.5 : 1.8,
+          strokeDasharray: e.dashed ? '6 4' : undefined,
         },
       };
     });
@@ -208,10 +221,15 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
         minZoom={0.3}
         maxZoom={2}
       >
-        <Background gap={20} size={1} color="#e2e8f0" />
+        <Background gap={24} size={1} color="#e2e8f0" />
         <Controls showInteractive={false} />
       </ReactFlow>
-      <style>{`@keyframes dag-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }`}</style>
+      <style>{`
+        @keyframes dag-glow {
+          0%, 100% { opacity: 1; box-shadow: 0 0 16px rgba(59,130,246,0.25), 0 2px 8px rgba(0,0,0,0.06); }
+          50% { opacity: 0.85; box-shadow: 0 0 24px rgba(59,130,246,0.4), 0 4px 12px rgba(0,0,0,0.08); }
+        }
+      `}</style>
     </div>
   );
 }
