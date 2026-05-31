@@ -17,8 +17,17 @@ class Writer(AgentBase):
 5. **必须输出 Markdown 表格**：第一列是维度名，其余列是竞品
 6. 所有竞品必须使用完全相同的行维度，没有数据的单元格填"无"
 7. 禁止行列错位
-8. 每条结论附带 (来源: URL) 引用
-9. 禁止输出任何段落叙述格式，只允许表格
+8. 禁止输出任何段落叙述格式，只允许表格
+
+[来源引用规则 - 严格遵守]
+- 输入数据中的 "sources" 数组包含真实 URL，格式为 [{"source_id": "...", "url": "https://...", "snippet": "..."}]
+- 引用来源时必须使用 sources 中的真实 URL，格式为 (来源: <真实URL>)
+- **绝对禁止**编造 ref.link、example.com 等虚假 URL
+- 如果 sources 中没有可用 URL，则不附带链接，不要编造
+
+[维度名称规则 - 严格遵守]
+- 必须使用输入数据中的 "dimension" 字段值作为报告标题/维度列名称
+- **绝对禁止**自行发明或改写维度名称
 
 输出 JSON 格式：
 {"report_html": "<div class='report'>...</div>", "summary": "报告摘要"}"""
@@ -32,8 +41,17 @@ class Writer(AgentBase):
 2. 每条结论附带溯源浮窗（data-finding-id 属性）
 3. 置信度用进度条展示
 4. 输出段落叙述，结构为 [竞品名]：[分析结论]
-5. 每条结论后附 (来源: URL)
-6. 只允许段落叙述，禁止任何表格格式
+5. 只允许段落叙述，禁止任何表格格式
+
+[来源引用规则 - 严格遵守]
+- 输入数据中的 "sources" 数组包含真实 URL，格式为 [{"source_id": "...", "url": "https://...", "snippet": "..."}]
+- 引用来源时必须使用 sources 中的真实 URL，格式为 (来源: <真实URL>)
+- **绝对禁止**编造 ref.link、example.com 等虚假 URL
+- 如果 sources 中没有可用 URL，则不附带链接，不要编造
+
+[维度名称规则 - 严格遵守]
+- 必须使用输入数据中的 "dimension" 字段值作为报告标题
+- **绝对禁止**自行发明或改写维度名称
 
 输出 JSON 格式：
 {"report_html": "<div class='report'>...</div>", "summary": "报告摘要"}"""
@@ -71,11 +89,15 @@ class Writer(AgentBase):
                 error_message=str(e),
                 llm_response=llm_response,
             )
+        # Forward Collector's sources for trace display
+        collector_sources = input_data.get("sources", [])
+        first_source_id = collector_sources[0].get("source_id", "") if collector_sources else ""
         reasoning_chain = [
-            {"step": 1, "thought": "分析采集数据中的关键发现"},
+            {"step": 1, "thought": "分析采集数据中的关键发现", "source_ref": first_source_id},
             {"step": 2, "thought": "组织报告结构并生成 HTML"},
         ]
         return AgentResult(
             success=True, output=parsed, llm_response=llm_response,
-            reasoning_chain=reasoning_chain, confidence={"score": 0.8, "level": "high"},
+            reasoning_chain=reasoning_chain, sources=collector_sources,
+            confidence={"score": 0.8, "level": "high"},
         )

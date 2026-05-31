@@ -119,16 +119,20 @@ min_sources 降级规则（分析时使用）：
         )
         # Extract trace enrichment data from findings
         reasoning_chain = []
-        sources = []
+        trace_sources = []
         best_confidence = {"score": 0, "level": "low"}
+        # Build lookup from Collector's sources (passed via input_data["sources"])
+        collector_src_map = {s["source_id"]: s for s in sources if isinstance(s, dict) and s.get("source_id")}
         for f in parsed.get("findings", []):
             for step in f.get("reasoning_chain", []):
                 reasoning_chain.append(step)
             if f.get("source_ref"):
-                sources.append({
+                # Look up real URL from Collector's sources
+                matched = collector_src_map.get(f["source_ref"], {})
+                trace_sources.append({
                     "source_id": f["source_ref"],
-                    "type": "analysis",
-                    "url": "",
+                    "type": matched.get("type", "analysis"),
+                    "url": matched.get("url", ""),
                     "snippet": f.get("quote", ""),
                 })
             conf = f.get("confidence", {})
@@ -136,7 +140,7 @@ min_sources 降级规则（分析时使用）：
                 best_confidence = conf
         return AgentResult(
             success=True, output=result.model_dump(), llm_response=llm_response,
-            reasoning_chain=reasoning_chain, sources=sources, confidence=best_confidence,
+            reasoning_chain=reasoning_chain, sources=trace_sources, confidence=best_confidence,
         )
 
     def _count_sources(self, raw_data: dict, sources: list | None = None) -> int:
