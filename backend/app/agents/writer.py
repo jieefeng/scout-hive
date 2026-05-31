@@ -91,13 +91,8 @@ class Writer(AgentBase):
             )
         # Forward Collector's sources for trace display
         collector_sources = input_data.get("sources", [])
-        first_source_id = collector_sources[0].get("source_id", "") if collector_sources else ""
-        reasoning_chain = [
-            {"step": 1, "thought": "分析采集数据中的关键发现", "source_ref": first_source_id},
-            {"step": 2, "thought": "组织报告结构并生成 HTML"},
-        ]
         return AgentResult(
             success=True, output=parsed, llm_response=llm_response,
-            reasoning_chain=reasoning_chain, sources=collector_sources,
+            sources=collector_sources,
             confidence={"score": 0.8, "level": "high"},
         )
