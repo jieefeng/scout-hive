@@ -111,18 +111,20 @@ class Orchestrator:
                     self.sm.update_task_status(task_id, TaskStatus.FAILED)
                 break
 
-            for node_id in ready:
+            # Execute all ready nodes concurrently
+            async def _run_ready_node(node_id: str):
                 node = parser.nodes[node_id]
                 result = await self.execute_node(task_id, node)
-
                 if not result.success:
                     retries = retry_count.get(node_id, 0)
                     if result.error_type == "json_parse" and retries < max_retries:
                         retry_count[node_id] = retries + 1
                         self.sm.update_node_status(task_id, node_id, NodeStatus.PENDING)
-                        continue
                     elif result.error_type == "token_limit":
                         self.sm.update_node_status(task_id, node_id, NodeStatus.SKIPPED)
+
+            import asyncio as _asyncio
+            await _asyncio.gather(*[_run_ready_node(nid) for nid in ready])
 
     async def execute_with_feedback(self, task_id: str, blueprint: DAGBlueprint) -> None:
         parser = DAGParser(blueprint)
@@ -173,30 +175,28 @@ class Orchestrator:
     ) -> None:
         """MVP simplified execution path using built-in DEFAULT_SCHEMA.
 
-        Executes DAG nodes with dimension config injected per agent:
-        - Collector: injects domain, keywords
-        - Analyst: injects min_sources
-        - Writer: injects output_type, description
-
-        Results are merged into report_html upon completion.
+        Executes DAG nodes concurrently: nodes whose dependencies are all
+        completed run in parallel via asyncio.create_task.
         """
+        import asyncio as _asyncio
         from app.schema.mvp_defaults import load_default_schema
 
         schema = load_default_schema()
         dim_config = _build_dim_config(schema)
         self.sm.update_task_status(task_id, TaskStatus.RUNNING)
 
-        results: dict[tuple[str, str], dict] = {}  # (competitor, dimension) -> data
+        results: dict[tuple[str, str], dict] = {}
+        node_tasks: dict[str, _asyncio.Task] = {}
 
-        for node in dag.nodes:
-            # 节点执行前检查取消标志
+        async def run_node(node: DAGNode):
+            # Wait for all dependency tasks to complete first
+            for dep_id in node.depends_on:
+                dep_task = node_tasks.get(dep_id)
+                if dep_task:
+                    await dep_task
+
+            # Check cancellation after deps resolve
             if self.sm.is_task_cancelled(task_id):
-                task = self.sm.get_task(task_id)
-                for nid, status in task.node_states.items():
-                    if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
-                        self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
-                self.sm.update_task_status(task_id, TaskStatus.STOPPED)
-                await self.bus.publish(Event(type="task_stopped", task_id=task_id))
                 return
 
             import time as time_module
@@ -206,7 +206,6 @@ class Orchestrator:
             dim_name = params.get("dimension", "")
             dim_cfg = dim_config.get(dim_name, {})
 
-            # Update node state to RUNNING
             self.sm.update_node_status(task_id, node.id, NodeStatus.RUNNING)
             await self.bus.publish(Event(type="node_started", task_id=task_id, node_id=node.id))
 
@@ -214,7 +213,7 @@ class Orchestrator:
                 collector = self.agents.get("Collector")
                 if not collector:
                     self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    continue
+                    return
                 input_data = {
                     "target": comp_name,
                     "domain": params.get("domain", ""),
@@ -230,7 +229,7 @@ class Orchestrator:
                 analyst = self.agents.get("Analyst")
                 if not analyst:
                     self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    continue
+                    return
                 stored = results.get((comp_name, dim_name), {})
                 raw = stored.get("raw_data", {})
                 sources = stored.get("sources", [])
@@ -242,31 +241,31 @@ class Orchestrator:
                     "sources": sources,
                 }
                 result = await analyst.execute(input_data)
-                results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})
-                results[(comp_name, dim_name)]["analysis"] = result.output
+                results.setdefault((comp_name, dim_name), {})["analysis"] = result.output
 
             elif node.agent == "Writer":
                 writer = self.agents.get("Writer")
                 if not writer:
                     self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    continue
-                analysis = results.get((comp_name, dim_name), {}).get("analysis", {})
+                    return
+                stored = results.get((comp_name, dim_name), {})
+                analysis = stored.get("analysis", {})
+                collector_sources = stored.get("sources", [])
                 input_data = {
                     "competitor": comp_name,
                     "dimension": dim_name,
                     "output_type": dim_cfg.get("output_type", "paragraph"),
                     "description": dim_cfg.get("description", ""),
                     "findings": analysis.get("findings", []) if isinstance(analysis, dict) else [],
+                    "sources": collector_sources,
                 }
                 result = await writer.execute(input_data)
-                results[(comp_name, dim_name)] = results.get((comp_name, dim_name), {})
-                results[(comp_name, dim_name)]["report"] = result.output
+                results.setdefault((comp_name, dim_name), {})["report"] = result.output
 
             else:
-                # Unknown agent type
                 self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
                 await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": f"Unknown agent: {node.agent}"}))
-                continue
+                return
 
             # Record result state and trace
             if node.agent in ("Collector", "Analyst", "Writer"):
@@ -290,6 +289,23 @@ class Orchestrator:
                     self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
                     self.sm.add_trace(task_id, trace_record.model_dump())
                     await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": result.error_message}))
+
+        # Launch all node tasks concurrently; dependency waiting happens inside each task
+        for node in dag.nodes:
+            node_tasks[node.id] = _asyncio.create_task(run_node(node))
+
+        # Wait for all tasks to complete (or propagate first exception)
+        await _asyncio.gather(*node_tasks.values())
+
+        # Handle cancellation after all tasks finish
+        if self.sm.is_task_cancelled(task_id):
+            task = self.sm.get_task(task_id)
+            for nid, status in task.node_states.items():
+                if status in (NodeStatus.RUNNING, NodeStatus.PENDING):
+                    self.sm.update_node_status(task_id, nid, NodeStatus.SKIPPED)
+            self.sm.update_task_status(task_id, TaskStatus.STOPPED)
+            await self.bus.publish(Event(type="task_stopped", task_id=task_id))
+            return
 
         # Merge all report_html pieces into final report
         report_parts = []

@@ -35,6 +35,12 @@ class CreateTaskRequest(BaseModel):
     competitors: list[CompetitorInput]
 
 
+class DebugTaskRequest(BaseModel):
+    """调试用快捷请求，所有字段可选，均有默认值。"""
+    name: str = "飞书"
+    domain: str = "feishu.cn"
+
+
 class TaskResponse(BaseModel):
     task_id: str
     status: str
@@ -50,23 +56,13 @@ class TaskResponse(BaseModel):
     reviews: list = Field(default_factory=list)
 
 
-@router.post("/", response_model=TaskResponse)
-async def create_task(req: CreateTaskRequest):
-    task_id = str(uuid.uuid4())
-    competitors = [CompetitorInput(name=c.name, website=c.website) for c in req.competitors]
-
-    # Load built-in DEFAULT_SCHEMA
-    schema = load_default_schema()
-    dimensions = []
-    for group in schema.groups:
-        for dim in group.dimensions:
-            dimensions.append(dim.name)
-
-    # Build simple DAG: Collector → Analyst → Writer per (competitor, dimension)
+def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAGBlueprint:
+    """构建 Collector → Analyst → Writer DAG 蓝图。"""
     nodes = []
     edges = []
-    prev_end = None
+    prev_comp_end = None
     for comp in competitors:
+        comp_writers = []
         for dim in dimensions:
             c_id = f"c_{comp.name}_{dim}"
             a_id = f"a_{comp.name}_{dim}"
@@ -76,12 +72,40 @@ async def create_task(req: CreateTaskRequest):
             nodes.append({"id": w_id, "agent": "Writer", "action": "write", "params": {"competitor": comp.name, "dimension": dim}})
             edges.append({"from_node": c_id, "to_node": a_id})
             edges.append({"from_node": a_id, "to_node": w_id})
-            if prev_end:
-                edges.append({"from_node": prev_end, "to_node": c_id})
-            prev_end = w_id
+            comp_writers.append(w_id)
+        if prev_comp_end:
+            for w_id in prev_comp_end:
+                for dim in dimensions:
+                    c_id = f"c_{comp.name}_{dim}"
+                    edges.append({"from_node": w_id, "to_node": c_id})
+        prev_comp_end = comp_writers
 
-    dag_blueprint = DAGBlueprint(nodes=nodes, edges=edges)
-    task = state_manager.create_task(task_id, [Competitor(name=c.name, website=c.website) for c in competitors], dimensions, dag_blueprint.model_dump())
+    from collections import defaultdict
+    dep_map: dict[str, list[str]] = defaultdict(list)
+    for edge in edges:
+        dep_map[edge["to_node"]].append(edge["from_node"])
+    for node in nodes:
+        node["depends_on"] = dep_map.get(node["id"], [])
+
+    return DAGBlueprint(nodes=nodes, edges=edges)
+
+
+def _load_dimensions() -> list[str]:
+    """从 DEFAULT_SCHEMA 提取所有维度名。"""
+    schema = load_default_schema()
+    return [dim.name for group in schema.groups for dim in group.dimensions]
+
+
+async def _create_and_run(competitors: list[CompetitorInput], dimensions: list[str]) -> TaskResponse:
+    """创建任务、持久化、启动 DAG 执行，返回 TaskResponse。"""
+    task_id = str(uuid.uuid4())
+    dag_blueprint = _build_dag(competitors, dimensions)
+    task = state_manager.create_task(
+        task_id,
+        [Competitor(name=c.name, website=c.website) for c in competitors],
+        dimensions,
+        dag_blueprint.model_dump(),
+    )
     assert state_manager.get_task(task_id) is not None, "Task was not stored in state_manager"
     task.progress = state_manager.calculate_progress(task)
 
@@ -93,6 +117,22 @@ async def create_task(req: CreateTaskRequest):
 
     asyncio.create_task(run_dag())
     return TaskResponse(**task.model_dump())
+
+
+@router.post("/", response_model=TaskResponse)
+async def create_task(req: CreateTaskRequest):
+    competitors = [CompetitorInput(name=c.name, website=c.website) for c in req.competitors]
+    dimensions = _load_dimensions()
+    return await _create_and_run(competitors, dimensions)
+
+
+@router.post("/debug", response_model=TaskResponse)
+async def debug_create_task(req: DebugTaskRequest = DebugTaskRequest()):
+    """快捷调试端点：默认创建飞书分析任务，也可自定义。"""
+    competitors = [CompetitorInput(name=req.name, website=req.domain)]
+    dimensions = _load_dimensions()
+    logger.info("Debug task: %s (%s), dimensions=%s", req.name, req.domain, dimensions)
+    return await _create_and_run(competitors, dimensions)
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
