@@ -37,5 +37,11 @@ Thumbs.db
 # Git worktrees
 .worktrees/
 
-# Git worktrees
-.worktrees/
+# CodeGraph index
+.codegraph/
+
+# Cursor IDE
+.cursor/
+
+# Crash dumps
+*.stackdump
