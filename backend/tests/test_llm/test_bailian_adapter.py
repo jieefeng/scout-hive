@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 import openai
-from app.llm.bailian_adapter import BailianAdapter
+from app.llm.bailian_adapter import BailianAdapter, _MAX_RETRIES
 from app.llm.openai_adapter import OpenAIAdapter
-from app.llm.base import LLMError
+from app.llm.base import LLMError, LLMResponse
 from app.llm.base import Message
 
 
@@ -99,3 +99,58 @@ async def test_stream_chat_rate_limit_error():
             async for _ in adapter.stream_chat([Message(role="user", content="test")]):
                 pass
         assert exc_info.value.code == "bailian_rate_limit"
+
+
+@pytest.mark.asyncio
+async def test_chat_connection_error_retries_then_succeeds():
+    adapter = BailianAdapter(api_key="dummy_key")
+    success_response = LLMResponse(content="ok", model="test", tokens_used=1, latency_ms=10)
+
+    call_count = 0
+
+    async def _fail_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 3:
+            raise openai.APIConnectionError(request=AsyncMock())
+        return success_response
+
+    with patch.object(OpenAIAdapter, "chat", side_effect=_fail_then_succeed):
+        with patch("app.llm.bailian_adapter.asyncio.sleep", new_callable=AsyncMock):
+            result = await adapter.chat([Message(role="user", content="test")])
+    assert result.content == "ok"
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_chat_connection_error_exhausts_retries():
+    adapter = BailianAdapter(api_key="dummy_key")
+
+    async def _always_fail(*args, **kwargs):
+        raise openai.APIConnectionError(request=AsyncMock())
+
+    with patch.object(OpenAIAdapter, "chat", side_effect=_always_fail):
+        with patch("app.llm.bailian_adapter.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(openai.APIConnectionError):
+                await adapter.chat([Message(role="user", content="test")])
+
+
+@pytest.mark.asyncio
+async def test_chat_timeout_error_retries():
+    adapter = BailianAdapter(api_key="dummy_key")
+    success_response = LLMResponse(content="ok", model="test", tokens_used=1, latency_ms=10)
+
+    call_count = 0
+
+    async def _timeout_then_succeed(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise openai.APITimeoutError(request=AsyncMock())
+        return success_response
+
+    with patch.object(OpenAIAdapter, "chat", side_effect=_timeout_then_succeed):
+        with patch("app.llm.bailian_adapter.asyncio.sleep", new_callable=AsyncMock):
+            result = await adapter.chat([Message(role="user", content="test")])
+    assert result.content == "ok"
+    assert call_count == 2

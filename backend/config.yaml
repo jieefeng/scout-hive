@@ -8,7 +8,7 @@ llm:
   adapters:
     bailian:
       type: bailian
-      model: qwen3.6-flash
+      model: qwen3.6-flash-2026-04-16
       api_key: ${DASHSCOPE_API_KEY}
   agent_bindings:
     TaskParser: bailian
