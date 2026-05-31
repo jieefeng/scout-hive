@@ -16,6 +16,7 @@ export interface TaskSummary {
   report_html: string;
   traces: TraceRecord[];
   reviews: ReviewResult[];
+  error_message?: string;
 }
 
 export interface TraceRecord {
