@@ -91,3 +91,18 @@ async def test_writer_with_output_type_paragraph(mock_llm):
     result = await writer.run({"output_type": "paragraph", "findings": []})
 
     assert result.success is True
+
+
+@pytest.mark.asyncio
+async def test_writer_has_empty_reasoning_chain(mock_llm):
+    """Writer 是格式化节点，不应有推理链。"""
+    writer = Writer("Writer", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"report_html": "<div>报告</div>", "summary": "摘要"}',
+        model="test",
+    )
+
+    result = await writer.run({"findings": [], "sources": []})
+
+    assert result.success is True
+    assert result.reasoning_chain == []
