@@ -36,10 +36,12 @@ class StateManager:
                 dag_json      TEXT NOT NULL DEFAULT '{}',
                 node_states   TEXT NOT NULL DEFAULT '{}',
                 created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
                 report_html   TEXT NOT NULL DEFAULT '',
                 traces        TEXT NOT NULL DEFAULT '[]',
                 reviews       TEXT NOT NULL DEFAULT '[]',
-                cancelled     INTEGER NOT NULL DEFAULT 0
+                cancelled     INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT NOT NULL DEFAULT ''
             )
         """)
         # Add cancelled column if upgrading from older schema (graceful migration)
@@ -60,6 +62,18 @@ class StateManager:
             self._conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
+        # Add error_message column if upgrading from older schema (graceful migration)
+        try:
+            self._conn.execute("ALTER TABLE tasks ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        # Add updated_at column if upgrading from older schema (graceful migration)
+        try:
+            self._conn.execute("ALTER TABLE tasks ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         self._conn.commit()
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
@@ -71,11 +85,12 @@ class StateManager:
             dag_json=json.loads(row["dag_json"]),
             node_states={k: NodeStatus(v) for k, v in json.loads(row["node_states"]).items()},
             created_at=row["created_at"],
-            updated_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
             report_html=row["report_html"],
             traces=json.loads(row["traces"] or "[]"),
             reviews=json.loads(row["reviews"] or "[]"),
             cancelled=bool(row["cancelled"]),
+            error_message=row["error_message"] or "",
         )
 
     def create_task(
@@ -100,10 +115,10 @@ class StateManager:
             reviews=[],
         )
         self._conn.execute(
-            """INSERT INTO tasks (task_id, status, competitors, dimensions, dag_json, node_states, created_at, report_html, traces, reviews)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO tasks (task_id, status, competitors, dimensions, dag_json, node_states, created_at, updated_at, report_html, traces, reviews)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, task.status.value, json.dumps([c.model_dump() for c in competitors]),
-             json.dumps(dimensions), json.dumps(dag_json), json.dumps({}), now, "", json.dumps([]), json.dumps([])),
+             json.dumps(dimensions), json.dumps(dag_json), json.dumps({}), now, now, "", json.dumps([]), json.dumps([])),
         )
         self._conn.commit()
         return task
@@ -116,11 +131,17 @@ class StateManager:
         rows = self._conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
         return [self._row_to_task(row) for row in rows]
 
+    def _touch(self, task_id: str):
+        """更新 updated_at 为当前时间。"""
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._conn.execute("UPDATE tasks SET updated_at = ? WHERE task_id = ?", (now, task_id))
+
     def update_task_status(self, task_id: str, status: TaskStatus):
         self._conn.execute(
             "UPDATE tasks SET status = ? WHERE task_id = ?",
             (status.value, task_id),
         )
+        self._touch(task_id)
         self._conn.commit()
 
     def update_node_status(self, task_id: str, node_id: str, status: NodeStatus):
@@ -141,6 +162,7 @@ class StateManager:
                 "UPDATE tasks SET traces = ? WHERE task_id = ?",
                 (json.dumps(traces), task_id),
             )
+            self._touch(task_id)
             self._conn.commit()
 
     def add_review(self, task_id: str, review: dict):
@@ -152,6 +174,7 @@ class StateManager:
                 "UPDATE tasks SET reviews = ? WHERE task_id = ?",
                 (json.dumps(reviews), task_id),
             )
+            self._touch(task_id)
             self._conn.commit()
 
     def get_reviews(self, task_id: str) -> list[dict]:
@@ -171,6 +194,12 @@ class StateManager:
 
     def set_report(self, task_id: str, html: str):
         self._conn.execute("UPDATE tasks SET report_html = ? WHERE task_id = ?", (html, task_id))
+        self._touch(task_id)
+        self._conn.commit()
+
+    def set_error_message(self, task_id: str, message: str):
+        self._conn.execute("UPDATE tasks SET error_message = ? WHERE task_id = ?", (message, task_id))
+        self._touch(task_id)
         self._conn.commit()
 
     def delete_task(self, task_id: str) -> bool:
@@ -200,14 +229,38 @@ class StateManager:
                 cls._instance._conn.commit()
             except Exception:
                 pass
-            cls._instance._conn.close()
+            try:
+                cls._instance._conn.close()
+            except Exception:
+                pass
         cls._instance = None
         db_path = Path(cls._db_path)
         if db_path.exists():
             try:
                 db_path.unlink()
             except PermissionError:
-                pass
+                # Windows: 文件可能仍被锁定，用 TRUNCATE 兜底
+                try:
+                    conn = sqlite3.connect(str(db_path))
+                    conn.execute("DELETE FROM tasks")
+                    conn.commit()
+                    conn.close()
+                except Exception:
+                    pass
+
+    def recover_running_tasks(self) -> int:
+        """启动时将所有 running 状态的任务标记为 failed。返回恢复的数量。"""
+        rows = self._conn.execute(
+            "SELECT task_id FROM tasks WHERE status = ?", (TaskStatus.RUNNING.value,)
+        ).fetchall()
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        for row in rows:
+            self._conn.execute(
+                "UPDATE tasks SET status = ?, error_message = ?, updated_at = ? WHERE task_id = ?",
+                (TaskStatus.FAILED.value, "服务器重启，任务中断", now, row["task_id"]),
+            )
+        self._conn.commit()
+        return len(rows)
 
     def calculate_progress(self, task: Task) -> float:
         total_nodes = len(task.dag_json.get("nodes", []))
@@ -233,5 +286,6 @@ class StateManager:
             "UPDATE tasks SET cancelled = 1 WHERE task_id = ? AND cancelled = 0",
             (task_id,)
         )
+        self._touch(task_id)
         self._conn.commit()
         return rows.rowcount > 0

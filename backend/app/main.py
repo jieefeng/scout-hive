@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
 
 from app.config import load_config
 from app.engine.state_manager import StateManager
@@ -34,6 +38,11 @@ def create_app() -> FastAPI:
 
     state_manager = StateManager()
     event_bus = EventBus()
+
+    # 启动时恢复中断的任务
+    recovered = state_manager.recover_running_tasks()
+    if recovered > 0:
+        logger.info("Recovered %d running tasks from previous session", recovered)
 
     llm_registry = LLMRegistry(config.llm)
     agents = {

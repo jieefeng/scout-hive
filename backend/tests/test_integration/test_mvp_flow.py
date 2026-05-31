@@ -527,4 +527,7 @@ async def test_execute_mvp_empty_competitors():
     blueprint = DAGBlueprint(nodes=[], edges=[], feedback_edges=[])
     await orch.execute_mvp(task_id, blueprint, competitors=[])
 
-    assert sm.get_task(task_id).status == TaskStatus.COMPLETED
+    # Empty competitors → no report → FAILED
+    task = sm.get_task(task_id)
+    assert task.status == TaskStatus.FAILED
+    assert "未生成报告" in task.error_message

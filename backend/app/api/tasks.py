@@ -54,6 +54,7 @@ class TaskResponse(BaseModel):
     report_html: str = ""
     traces: list = Field(default_factory=list)
     reviews: list = Field(default_factory=list)
+    error_message: str = ""
 
 
 def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAGBlueprint:
@@ -112,7 +113,9 @@ async def _create_and_run(competitors: list[CompetitorInput], dimensions: list[s
     async def run_dag():
         try:
             await orchestrator.execute_mvp(task_id, dag_blueprint, [c.model_dump() for c in competitors])
-        except Exception:
+        except Exception as e:
+            logger.exception("Task %s failed: %s", task_id, e)
+            state_manager.set_error_message(task_id, str(e))
             state_manager.update_task_status(task_id, TaskStatus.FAILED)
 
     asyncio.create_task(run_dag())

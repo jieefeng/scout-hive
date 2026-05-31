@@ -320,5 +320,9 @@ class Orchestrator:
 
         final_report = "\n\n".join(report_parts)
         self.sm.set_report(task_id, final_report)
-        self.sm.update_task_status(task_id, TaskStatus.COMPLETED)
+        if not final_report.strip():
+            self.sm.set_error_message(task_id, "所有 Writer 节点未生成报告内容")
+            self.sm.update_task_status(task_id, TaskStatus.FAILED)
+        else:
+            self.sm.update_task_status(task_id, TaskStatus.COMPLETED)
         await self.bus.publish(Event(type="task_completed", task_id=task_id))

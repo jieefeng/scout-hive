@@ -44,3 +44,4 @@ class Task(BaseModel):
     traces: list[dict] = Field(default_factory=list)
     reviews: list[dict] = Field(default_factory=list)
     cancelled: bool = False  # 任务是否被用户取消
+    error_message: str = ""  # 失败时的错误信息
