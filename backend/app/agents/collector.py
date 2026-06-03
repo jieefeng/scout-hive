@@ -113,10 +113,33 @@ class Collector(AgentBase):
             from app.config import AnySearchConfig
             return AnySearchConfig(search_timeout=15, extract_timeout=30)
 
+    @staticmethod
+    def _extract_domain(website: str) -> str:
+        """从域名或完整 URL 中提取纯域名。"""
+        w = website.strip()
+        if not w:
+            return ""
+        # 补全协议以便 URL 解析
+        if "/" in w and not w.startswith("http"):
+            w = "https://" + w
+        if "/" in w:
+            try:
+                from urllib.parse import urlparse
+                host = urlparse(w).hostname or ""
+                return host.replace("www.", "") if host else ""
+            except Exception:
+                pass
+        # 纯域名，去掉 www. 和端口
+        return w.replace("www.", "").split("/")[0].split(":")[0]
+
     async def execute(self, input_data: dict) -> AgentResult:
+        import time as _time
+        start_time = _time.monotonic()
+
         target = input_data.get("target", "")
         dimension = input_data.get("dimension", "")
-        domain = input_data.get("domain", "")
+        website = input_data.get("domain", "")
+        domain = self._extract_domain(website)
         system_prompt = self.SYSTEM_PROMPT_TEMPLATE.format(domain=domain) if domain else self.SYSTEM_PROMPT_NO_DOMAIN
 
         domain_hint = f"\n域名约束: site:{domain}" if domain else ""
@@ -124,7 +147,10 @@ class Collector(AgentBase):
             Message(role="system", content=system_prompt),
             Message(role="user", content=f"竞品: {target}\n分析维度: {dimension}{domain_hint}"),
         ]
+        logger.info(f"[Collector] Starting: target={target}, dimension={dimension}")
         llm_response = await self.chat(messages)
+        logger.info(f"[Collector] LLM strategy generated in {int((_time.monotonic() - start_time) * 1000)}ms")
+
         try:
             strategy = json.loads(llm_response.content)
         except Exception:
@@ -137,6 +163,12 @@ class Collector(AgentBase):
         search_queries = strategy.get("search_queries", [f"{target} {dimension}"])
         target_urls = strategy.get("target_urls", [])
 
+        # 如果输入是完整 URL（而非纯域名），直接加入采集目标
+        if website and "/" in website:
+            url = website if website.startswith("http") else "https://" + website
+            if url not in target_urls:
+                target_urls.insert(0, url)
+
         # Phase 1: Search for relevant URLs via AnySearch API
         all_search_results = []
         config = self._get_anysearch_config()
@@ -148,6 +180,8 @@ class Collector(AgentBase):
             for r in results:
                 if r["url"] not in target_urls:
                     target_urls.append(r["url"])
+
+        logger.info(f"[Collector] Search done: {len(all_search_results)} results, {len(target_urls)} URLs in {int((_time.monotonic() - start_time) * 1000)}ms")
 
         # Phase 2: Fetch and extract content from top URLs (direct HTTP with trafilatura)
         collected_texts = []
@@ -181,6 +215,8 @@ class Collector(AgentBase):
                     "url": r.get("url", ""),
                     "snippet": r.get("snippet", "")[:300],
                 })
+
+        logger.info(f"[Collector] Fetch done: {len(collected_texts)} texts collected in {int((_time.monotonic() - start_time) * 1000)}ms")
 
         raw_content = "\n\n---\n\n".join(collected_texts) if collected_texts else f"未能采集到关于 {target} 的 {dimension} 相关内容。"
         content_hash = hashlib.md5(raw_content.encode()).hexdigest()

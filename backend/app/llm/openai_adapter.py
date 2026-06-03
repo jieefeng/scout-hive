@@ -4,9 +4,9 @@ from app.llm.base import LLMAdapter, Message, LLMResponse
 
 
 class OpenAIAdapter(LLMAdapter):
-    def __init__(self, api_key: str, model: str = "gpt-4o"):
+    def __init__(self, api_key: str, model: str = "gpt-4o", timeout: float = 60.0):
         import openai
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        self.client = openai.AsyncOpenAI(api_key=api_key, timeout=timeout)
         self.model = model
 
     async def chat(self, messages: list[Message], **kwargs) -> LLMResponse:

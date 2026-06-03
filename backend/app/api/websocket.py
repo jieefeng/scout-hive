@@ -26,6 +26,7 @@ def init_router(bus: EventBus):
     event_bus.subscribe("node_completed", broadcast_event)
     event_bus.subscribe("node_failed", broadcast_event)
     event_bus.subscribe("task_completed", broadcast_event)
+    event_bus.subscribe("task_stopped", broadcast_event)
     event_bus.subscribe("review_feedback", broadcast_event)
 
 

@@ -217,3 +217,31 @@ async def test_collector_uses_search_content_when_fetch_fails(mock_llm):
         output = result.output
         assert "content" in output
         assert "飞书完整正文内容 from search" in output["content"]
+
+
+class TestExtractDomain:
+    """Tests for Collector._extract_domain static method."""
+
+    def test_pure_domain(self):
+        assert Collector._extract_domain("feishu.cn") == "feishu.cn"
+
+    def test_full_url(self):
+        assert Collector._extract_domain("https://github.com/zts212653/clowder-ai") == "github.com"
+
+    def test_url_without_protocol(self):
+        assert Collector._extract_domain("github.com/zts212653/clowder-ai") == "github.com"
+
+    def test_url_with_www(self):
+        assert Collector._extract_domain("https://www.feishu.cn/docs") == "feishu.cn"
+
+    def test_domain_with_www(self):
+        assert Collector._extract_domain("www.feishu.cn") == "feishu.cn"
+
+    def test_empty_string(self):
+        assert Collector._extract_domain("") == ""
+
+    def test_url_with_port(self):
+        assert Collector._extract_domain("localhost:8080") == "localhost"
+
+    def test_domain_with_trailing_slash(self):
+        assert Collector._extract_domain("feishu.cn/") == "feishu.cn"

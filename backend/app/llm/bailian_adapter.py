@@ -11,10 +11,11 @@ _BASE_DELAY = 1  # seconds
 
 
 class BailianAdapter(OpenAIAdapter):
-    def __init__(self, api_key: str, model: str = "qwen3.6-plus-2026-04-02"):
+    def __init__(self, api_key: str, model: str = "qwen3.6-flash-2026-04-16", timeout: float = 60.0):
         self.client = openai.AsyncOpenAI(
             api_key=api_key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            timeout=timeout,
         )
         self.model = model
 

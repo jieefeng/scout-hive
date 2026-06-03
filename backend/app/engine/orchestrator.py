@@ -1,5 +1,6 @@
 import uuid
 import time
+import logging
 
 from app.engine.state_manager import StateManager
 from app.engine.event_bus import EventBus, Event
@@ -7,6 +8,8 @@ from app.engine.dag_parser import DAGParser
 from app.agents.base import AgentBase, AgentResult
 from app.models.dag import DAGBlueprint, DAGNode, FeedbackEdge
 from app.models.task import TaskStatus, NodeStatus
+
+logger = logging.getLogger(__name__)
 
 
 def _build_dim_config(schema) -> dict:
@@ -185,6 +188,9 @@ class Orchestrator:
         dim_config = _build_dim_config(schema)
         self.sm.update_task_status(task_id, TaskStatus.RUNNING)
 
+        # Node timeout: 3 minutes per node (generous for LLM calls)
+        NODE_TIMEOUT = 180
+
         results: dict[tuple[str, str], dict] = {}
         node_tasks: dict[str, _asyncio.Task] = {}
 
@@ -193,7 +199,14 @@ class Orchestrator:
             for dep_id in node.depends_on:
                 dep_task = node_tasks.get(dep_id)
                 if dep_task:
-                    await dep_task
+                    try:
+                        await _asyncio.wait_for(dep_task, timeout=NODE_TIMEOUT)
+                    except _asyncio.TimeoutError:
+                        logger.warning(f"Dependency {dep_id} timed out for node {node.id}")
+                        return
+                    except Exception:
+                        # Dependency failed, this node should be skipped
+                        return
 
             # Check cancellation after deps resolve
             if self.sm.is_task_cancelled(task_id):
@@ -209,62 +222,91 @@ class Orchestrator:
             self.sm.update_node_status(task_id, node.id, NodeStatus.RUNNING)
             await self.bus.publish(Event(type="node_started", task_id=task_id, node_id=node.id))
 
-            if node.agent == "Collector":
-                collector = self.agents.get("Collector")
-                if not collector:
-                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    return
-                input_data = {
-                    "target": comp_name,
-                    "domain": params.get("domain", ""),
-                    "dimension": dim_name,
-                    "keywords": dim_cfg.get("keywords", []),
-                    "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
-                    "tracking_sources": dim_cfg.get("tracking_sources", ["web"]),
-                }
-                result = await collector.execute(input_data)
-                results[(comp_name, dim_name)] = {"raw_data": result.output, "sources": result.sources}
+            result = None
+            input_data = {}
 
-            elif node.agent == "Analyst":
-                analyst = self.agents.get("Analyst")
-                if not analyst:
-                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    return
-                stored = results.get((comp_name, dim_name), {})
-                raw = stored.get("raw_data", {})
-                sources = stored.get("sources", [])
-                input_data = {
-                    "competitor": comp_name,
-                    "dimension": dim_name,
-                    "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
-                    "raw_data": raw,
-                    "sources": sources,
-                }
-                result = await analyst.execute(input_data)
-                results.setdefault((comp_name, dim_name), {})["analysis"] = result.output
+            try:
+                if node.agent == "Collector":
+                    collector = self.agents.get("Collector")
+                    if not collector:
+                        self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
+                        return
+                    input_data = {
+                        "target": comp_name,
+                        "domain": params.get("domain", ""),
+                        "dimension": dim_name,
+                        "keywords": dim_cfg.get("keywords", []),
+                        "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
+                        "tracking_sources": dim_cfg.get("tracking_sources", ["web"]),
+                    }
+                    result = await _asyncio.wait_for(collector.execute(input_data), timeout=NODE_TIMEOUT)
+                    results[(comp_name, dim_name)] = {"raw_data": result.output, "sources": result.sources}
 
-            elif node.agent == "Writer":
-                writer = self.agents.get("Writer")
-                if not writer:
-                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                    return
-                stored = results.get((comp_name, dim_name), {})
-                analysis = stored.get("analysis", {})
-                collector_sources = stored.get("sources", [])
-                input_data = {
-                    "competitor": comp_name,
-                    "dimension": dim_name,
-                    "output_type": dim_cfg.get("output_type", "paragraph"),
-                    "description": dim_cfg.get("description", ""),
-                    "findings": analysis.get("findings", []) if isinstance(analysis, dict) else [],
-                    "sources": collector_sources,
-                }
-                result = await writer.execute(input_data)
-                results.setdefault((comp_name, dim_name), {})["report"] = result.output
+                elif node.agent == "Analyst":
+                    analyst = self.agents.get("Analyst")
+                    if not analyst:
+                        self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
+                        return
+                    stored = results.get((comp_name, dim_name), {})
+                    raw = stored.get("raw_data", {})
+                    sources = stored.get("sources", [])
+                    input_data = {
+                        "competitor": comp_name,
+                        "dimension": dim_name,
+                        "evidence_threshold": dim_cfg.get("evidence_threshold", 1),
+                        "raw_data": raw,
+                        "sources": sources,
+                    }
+                    result = await _asyncio.wait_for(analyst.execute(input_data), timeout=NODE_TIMEOUT)
+                    results.setdefault((comp_name, dim_name), {})["analysis"] = result.output
 
-            else:
-                self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
-                await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": f"Unknown agent: {node.agent}"}))
+                elif node.agent == "Writer":
+                    writer = self.agents.get("Writer")
+                    if not writer:
+                        self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
+                        return
+                    stored = results.get((comp_name, dim_name), {})
+                    analysis = stored.get("analysis", {})
+                    collector_sources = stored.get("sources", [])
+                    input_data = {
+                        "competitor": comp_name,
+                        "dimension": dim_name,
+                        "output_type": dim_cfg.get("output_type", "paragraph"),
+                        "description": dim_cfg.get("description", ""),
+                        "findings": analysis.get("findings", []) if isinstance(analysis, dict) else [],
+                        "sources": collector_sources,
+                    }
+                    result = await _asyncio.wait_for(writer.execute(input_data), timeout=NODE_TIMEOUT)
+                    results.setdefault((comp_name, dim_name), {})["report"] = result.output
+
+                else:
+                    self.sm.update_node_status(task_id, node.id, NodeStatus.SKIPPED)
+                    await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": f"Unknown agent: {node.agent}"}))
+                    return
+
+            except _asyncio.TimeoutError:
+                elapsed_ms = int((time_module.monotonic() - node_start) * 1000)
+                logger.error(f"Node {node.id} ({node.agent}) timed out after {elapsed_ms}ms")
+                self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
+                self.sm.add_trace(task_id, {
+                    "node_id": node.id,
+                    "agent": node.agent,
+                    "elapsed_ms": elapsed_ms,
+                    "error": f"节点执行超时 ({NODE_TIMEOUT}秒)",
+                })
+                await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": f"节点执行超时 ({NODE_TIMEOUT}秒)"}))
+                return
+            except Exception as e:
+                elapsed_ms = int((time_module.monotonic() - node_start) * 1000)
+                logger.exception(f"Node {node.id} ({node.agent}) failed with exception: {e}")
+                self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
+                self.sm.add_trace(task_id, {
+                    "node_id": node.id,
+                    "agent": node.agent,
+                    "elapsed_ms": elapsed_ms,
+                    "error": str(e),
+                })
+                await self.bus.publish(Event(type="node_failed", task_id=task_id, node_id=node.id, data={"error": str(e)}))
                 return
 
             # Record result state and trace

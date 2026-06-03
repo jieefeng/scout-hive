@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 
 from app.agents.base import AgentBase, AgentResult
@@ -11,6 +12,8 @@ from app.models.analysis import (
     Finding,
     ReasoningStep,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class Analyst(AgentBase):
@@ -46,6 +49,13 @@ min_sources 降级规则（分析时使用）：
 注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。"""
 
     async def execute(self, input_data: dict) -> AgentResult:
+        import time as _time
+        start_time = _time.monotonic()
+
+        competitor = input_data.get("competitor", "")
+        dimension = input_data.get("dimension", "")
+        logger.info(f"[Analyst] Starting: competitor={competitor}, dimension={dimension}")
+
         evidence_threshold = input_data.get("evidence_threshold", 1)
         raw_data = input_data.get("raw_data", {})
         sources = input_data.get("sources", [])
@@ -83,7 +93,9 @@ min_sources 降级规则（分析时使用）：
                 "_confidence_level": confidence_level,
             }, ensure_ascii=False, default=str)),
         ]
+        logger.info(f"[Analyst] Calling LLM: source_count={source_count}, confidence={confidence_level}")
         llm_response = await self.chat(messages)
+        logger.info(f"[Analyst] LLM response received in {int((_time.monotonic() - start_time) * 1000)}ms")
         try:
             raw = llm_response.content
             # Strip markdown code fences if present (common LLM output pattern)

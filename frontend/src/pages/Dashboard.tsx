@@ -9,15 +9,27 @@ interface CompetitorEntry {
   domain: string;
 }
 
-function isValidDomain(domain: string): boolean {
-  const d = domain.trim();
+/** 从输入中提取纯域名（去掉协议、路径、端口） */
+function extractDomain(input: string): string {
+  let d = input.trim();
+  // 补全协议以便 URL 解析
+  if (d.includes('/') && !d.startsWith('http')) d = 'https://' + d;
+  try {
+    const url = new URL(d);
+    return url.hostname;
+  } catch {
+    // 不是 URL，当纯域名处理
+    return d.replace(/^(www\.)?/, '').split('/')[0].split(':')[0];
+  }
+}
+
+/** 校验域名或 URL 是否合法 */
+function isValidWebsite(input: string): boolean {
+  const d = input.trim();
   if (!d) return false;
-  // Strip protocol prefix if present
-  const normalized = d.replace(/^(https?:\/\/)?(www\.)?/, '');
-  if (!normalized) return false;
-  if (normalized.includes('/') || normalized.includes(':') || normalized.includes('?')) return false;
-  if (normalized.endsWith('.')) return false;
-  return /^[a-zA-Z0-9][a-zA-Z0-9\-]*(\.[a-zA-Z]{2,})+$/.test(normalized);
+  const domain = extractDomain(d);
+  if (!domain || domain.endsWith('.')) return false;
+  return /^[a-zA-Z0-9][a-zA-Z0-9\-]*(\.[a-zA-Z]{2,})+$/.test(domain);
 }
 
 export default function Dashboard() {
@@ -39,7 +51,7 @@ export default function Dashboard() {
     setCompetitors(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
-  const validCompetitors = competitors.filter(c => c.name.trim() && isValidDomain(c.domain.trim()));
+  const validCompetitors = competitors.filter(c => c.name.trim() && isValidWebsite(c.domain.trim()));
   const canCreate = validCompetitors.length > 0;
 
   const handleDelete = async (taskId: string) => {
@@ -88,8 +100,8 @@ export default function Dashboard() {
                 type="text"
                 value={comp.domain}
                 onChange={e => updateCompetitor(comp.id, 'domain', e.target.value)}
-                placeholder="域名，例如：feishu.cn"
-                style={{ flex: 1, padding: '0.75rem', fontSize: '1rem', border: comp.domain && !isValidDomain(comp.domain) ? '1px solid #e53935' : '1px solid #ccc', borderRadius: '6px', outline: 'none' }}
+                placeholder="域名或网址，例如：feishu.cn 或 https://github.com/user/repo"
+                style={{ flex: 1, padding: '0.75rem', fontSize: '1rem', border: comp.domain && !isValidWebsite(comp.domain) ? '1px solid #e53935' : '1px solid #ccc', borderRadius: '6px', outline: 'none' }}
               />
             </div>
           ))}

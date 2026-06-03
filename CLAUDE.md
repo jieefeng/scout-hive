@@ -32,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|
 | 后端 | Python + FastAPI + Pydantic v2 |
 | 前端 | React 19 + TypeScript (strict) + React Flow v12 + Zustand v5 |
-| LLM | 可插拔适配层（Claude / 百练 DashScope / OpenAI / Ollama），当前默认百练 qwen3.6-flash |
+| LLM | 可插拔适配层（Claude / 百练 DashScope / OpenAI / Ollama），当前默认百练 qwen3.6-flash-2026-04-16 |
 | 实时通信 | WebSocket + EventBus 内存发布订阅 |
 | 数据清洗 | trafilatura |
 | 持久化 | SQLite（StateManager 单例） |
