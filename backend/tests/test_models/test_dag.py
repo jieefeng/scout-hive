@@ -62,7 +62,6 @@ def test_task_dag_creation():
         traceability=TraceabilityConfig(
             level="full",
             include_reasoning=True,
-            include_confidence=True,
         ),
     )
     assert dag.task_id == "test-001"
