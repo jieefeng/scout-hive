@@ -78,3 +78,58 @@ class TaskParser(AgentBase):
             traceability=TraceabilityConfig(),
         )
         return AgentResult(success=True, output=dag.model_dump(), llm_response=llm_response)
+
+    async def retry_with_prompt_hint(
+        self,
+        input_data: dict,
+        error_hint: str,
+    ) -> AgentResult:
+        """第二次执行：把上次错误以 user 消息追加，引导 LLM 修正。
+
+        调用方式与 execute 相同，但 messages 多一轮错误提示 hint。
+        """
+        user_message = input_data.get("message", "")
+        messages = [
+            Message(role="system", content=self.SYSTEM_PROMPT),
+            Message(role="user", content=user_message),
+            Message(
+                role="user",
+                content=f"⚠️ 上一轮输出有误：{error_hint}\n请重新输出严格符合格式的 JSON。",
+            ),
+        ]
+        logger.info(f"TaskParser retrying LLM with {len(messages)} messages")
+        llm_response = await self.chat(messages)
+        content = llm_response.content.strip() if llm_response.content else ""
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(lines[1:-1]) if len(lines) >= 2 else content.lstrip("`")
+        try:
+            parsed = json.loads(content) if content else None
+        except json.JSONDecodeError as e:
+            logger.error(f"TaskParser retry JSON parse error: {e}")
+            return AgentResult(
+                success=False,
+                raw_response=llm_response.content or "",
+                json_valid=False,
+                error_type="json_parse",
+                error_message=str(e),
+                llm_response=llm_response,
+            )
+        if parsed is None:
+            return AgentResult(
+                success=False,
+                raw_response=llm_response.content or "",
+                json_valid=False,
+                error_type="llm_empty",
+                error_message="LLM returned empty content",
+                llm_response=llm_response,
+            )
+        task_id = str(uuid.uuid4())
+        dag = TaskDAG(
+            task_id=task_id,
+            competitors=parsed.get("competitors", []),
+            dimensions=parsed.get("dimensions", []),
+            dag=DAGBlueprint(**parsed.get("dag", {})),
+            traceability=TraceabilityConfig(),
+        )
+        return AgentResult(success=True, output=dag.model_dump(), llm_response=llm_response)
