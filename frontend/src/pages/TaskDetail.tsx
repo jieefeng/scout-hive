@@ -324,7 +324,6 @@ export default function TaskDetail() {
               <AgentDetail
                 trace={selectedTrace}
                 nodeId={selectedNodeId}
-                nodeStatus={selectedNodeId ? currentTask.node_states[selectedNodeId] : undefined}
               />
             </div>
           </div>

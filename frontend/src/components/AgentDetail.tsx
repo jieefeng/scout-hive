@@ -4,7 +4,6 @@ import type { TraceRecord, ReasoningStep, TraceSource } from '../types';
 interface AgentDetailProps {
   trace: TraceRecord | null;
   nodeId?: string | null;
-  nodeStatus?: string;
 }
 
 /* ── Agent color themes ── */
@@ -33,7 +32,7 @@ function getTheme(agent: string) {
 }
 
 /* ── Metric card ── */
-function MetricCard({ icon, label, value, accent }: { icon: string; label: string; value: string; accent: string }) {
+function MetricCard({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div style={{
       flex: 1, padding: '14px 16px', borderRadius: '12px',
@@ -221,7 +220,7 @@ function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: 
 }
 
 /* ── Main component ── */
-export default function AgentDetail({ trace, nodeId, nodeStatus }: AgentDetailProps) {
+export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
   if (!nodeId) {
@@ -341,9 +340,9 @@ export default function AgentDetail({ trace, nodeId, nodeStatus }: AgentDetailPr
         background: 'linear-gradient(180deg, #f8fafc, #f1f5f9)',
         borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap',
       }}>
-        <MetricCard icon="🤖" label="模型" value={meta.model || '-'} accent={theme.accent} />
-        <MetricCard icon="🪙" label="Token" value={meta.tokens_used ? meta.tokens_used.toLocaleString() : '-'} accent={theme.accent} />
-        <MetricCard icon="⏱️" label="耗时" value={meta.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : '-'} accent={theme.accent} />
+        <MetricCard icon="🤖" label="模型" value={meta.model || '-'} />
+        <MetricCard icon="🪙" label="Token" value={meta.tokens_used ? meta.tokens_used.toLocaleString() : '-'} />
+        <MetricCard icon="⏱️" label="耗时" value={meta.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : '-'} />
       </div>
 
       {/* ── Tab bar ── */}

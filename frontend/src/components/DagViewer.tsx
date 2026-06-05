@@ -73,7 +73,7 @@ function DagNodeComponent({ data }: DagNodeComponentProps) {
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
       <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
-        <div style={{ fontSize: '1.3rem', marginBottom: '3px' }}>{STATUS_ICONS[status] || '⏳'}</div>
+        <div style={{ fontSize: '1.3rem', marginBottom: '3px' }}>{(status && STATUS_ICONS[status]) || '⏳'}</div>
         <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e293b', marginBottom: '3px', whiteSpace: 'nowrap' }}>
           {AGENT_LABELS[agentName] || agentName}
         </div>
