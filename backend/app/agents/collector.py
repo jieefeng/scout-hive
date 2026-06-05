@@ -202,6 +202,7 @@ class Collector(AgentBase):
                     "source_id": str(uuid.uuid4()),
                     "type": "web",
                     "url": url,
+                    "title": search_result.get("title", ""),
                     "snippet": text[:300],
                 })
 
@@ -213,6 +214,7 @@ class Collector(AgentBase):
                     "source_id": str(uuid.uuid4()),
                     "type": "web",
                     "url": r.get("url", ""),
+                    "title": r.get("title", ""),
                     "snippet": r.get("snippet", "")[:300],
                 })
 
@@ -243,7 +245,29 @@ class Collector(AgentBase):
             ],
         )
         confidence_score = 0.7 if collected_texts else 0.3
+
+        # Build reasoning chain for trace display
+        elapsed_s = round(_time.monotonic() - start_time, 1)
+        attempted_urls = min(len(target_urls), 5)
+        success_rate = round(len(collected_texts) / attempted_urls * 100) if attempted_urls else 0
+        reasoning_chain = [
+            {
+                "step": 1,
+                "thought": f"搜索策略：使用 {len(search_queries)} 个关键词进行搜索\n" +
+                           "\n".join(f"• \"{q}\"" for q in search_queries),
+                "type": "strategy",
+            },
+            {
+                "step": 2,
+                "thought": f"采集结果：共搜索到 {len(all_search_results)} 条结果，"
+                           f"成功采集 {len(collected_texts)} 个网页\n"
+                           f"成功率: {success_rate}% | 耗时: {elapsed_s}s",
+                "type": "summary",
+            },
+        ]
+
         return AgentResult(
             success=True, output=raw_data.model_dump(), llm_response=llm_response,
             sources=sources, confidence={"score": confidence_score, "level": "medium" if collected_texts else "low"},
+            reasoning_chain=reasoning_chain,
         )

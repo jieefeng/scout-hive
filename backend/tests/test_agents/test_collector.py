@@ -245,3 +245,61 @@ class TestExtractDomain:
 
     def test_domain_with_trailing_slash(self):
         assert Collector._extract_domain("feishu.cn/") == "feishu.cn"
+
+
+@pytest.mark.asyncio
+async def test_collector_produces_reasoning_chain_with_strategy_and_summary(mock_llm):
+    """Collector trace should contain search strategy and collection summary."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["douyin features", "douyin AI"], "target_urls": [], "strategy": "web_search"}',
+        model="test",
+    )
+
+    result = await collector.run({"target": "douyin", "dimension": "features"})
+
+    assert result.success is True
+    assert len(result.reasoning_chain) == 2
+
+    strategy_step = result.reasoning_chain[0]
+    assert strategy_step["step"] == 1
+    assert strategy_step["type"] == "strategy"
+    assert "douyin features" in strategy_step["thought"]
+    assert "douyin AI" in strategy_step["thought"]
+
+    summary_step = result.reasoning_chain[1]
+    assert summary_step["step"] == 2
+    assert summary_step["type"] == "summary"
+    assert "采集" in summary_step["thought"]
+
+
+@pytest.mark.asyncio
+async def test_collector_sources_include_title(mock_llm):
+    """Collector sources should include title from search results."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["feishu"], "target_urls": [], "strategy": "web_search"}',
+        model="test",
+    )
+
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": [{
+                "url": "https://www.feishu.cn/",
+                "description": "飞书官网",
+                "content": "飞书正文...",
+                "title": "飞书官网"
+            }]}
+        }
+        mock_client.post.return_value = mock_response
+
+        result = await collector.run({"target": "feishu", "dimension": "features"})
+
+        assert result.success is True
+        assert result.sources
+        assert result.sources[0]["title"] == "飞书官网"
