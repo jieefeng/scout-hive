@@ -8,9 +8,7 @@ from app.models.analysis import (
     AnalysisResult,
     ComparisonMatrix,
     CompetitorStatus,
-    Confidence,
     Finding,
-    ReasoningStep,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,8 +29,7 @@ class Analyst(AgentBase):
     {
       "finding_id": "f001", "claim": "结论描述", "quote": "原文引用",
       "quote_type": "exact", "source_ref": "来源ID", "chunk_ref": "分段ID",
-      "reasoning_chain": [{"step": 1, "thought": "推理过程", "source_ref": "来源ID"}],
-      "confidence": {"score": 0.9, "level": "high", "uncertainty_factors": []}
+      "reasoning_chain": [{"step": 1, "thought": "推理过程", "source_ref": "来源ID"}]
     }
   ],
   "comparison_matrix": {
@@ -42,9 +39,9 @@ class Analyst(AgentBase):
 }
 
 min_sources 降级规则（分析时使用）：
-- sources >= min_sources：正常输出，confidence.level = "high"
-- 1 <= sources < min_sources：降级输出，confidence.level = "low"，在 claim 前加 ⚠️，在 uncertainty_factors 中记录"仅找到 N 条来源，未达最低要求 (min_sources)"
-- sources == 0：标记为 data_insufficient，claim 前加 "⚠️ 数据不足："，confidence.score = 0.0, level = "low"
+- sources >= min_sources：正常输出
+- 1 <= sources < min_sources：降级输出，在 claim 前加 ⚠️
+- sources == 0：标记为 data_insufficient，claim 前加 "⚠️ 数据不足："
 
 注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。"""
 
@@ -63,25 +60,16 @@ min_sources 降级规则（分析时使用）：
         # 代码层计算 source 数量
         source_count = self._count_sources(raw_data, sources)
 
-        # 代码层确定 confidence 级别
-        if source_count >= evidence_threshold:
-            confidence_level = "high"
-        elif source_count > 0:
-            confidence_level = "low"
-        else:
-            confidence_level = "insufficient"
-
         # 将降级信息注入 prompt，让 LLM 遵循
         downgrade_hint = ""
-        if confidence_level == "low":
+        if source_count == 0:
+            downgrade_hint = (
+                "\n[数据不足] 未能找到足够来源，所有结论前加 ⚠️ 数据不足：。"
+            )
+        elif source_count < evidence_threshold:
             downgrade_hint = (
                 f"\n[降级警告] 仅找到 {source_count} 条来源，未达最低要求 ({evidence_threshold})。"
-                f"所有结论前必须加 ⚠️ 标记，confidence.level 设为 'low'。"
-            )
-        elif confidence_level == "insufficient":
-            downgrade_hint = (
-                "\n[数据不足] 未能找到足够来源，所有结论前加 ⚠️ 数据不足：，"
-                "confidence.score 设为 0.0，level 设为 'low'。"
+                f"所有结论前必须加 ⚠️ 标记。"
             )
 
         messages = [
@@ -90,10 +78,10 @@ min_sources 降级规则（分析时使用）：
                 **input_data,
                 "_downgrade_hint": downgrade_hint,
                 "_source_count": source_count,
-                "_confidence_level": confidence_level,
             }, ensure_ascii=False, default=str)),
         ]
-        logger.info(f"[Analyst] Calling LLM: source_count={source_count}, confidence={confidence_level}")
+        downgrade_label = "insufficient" if source_count == 0 else ("low" if source_count < evidence_threshold else "none")
+        logger.info(f"[Analyst] Calling LLM: source_count={source_count}, downgrade={downgrade_label}")
         llm_response = await self.chat(messages)
         logger.info(f"[Analyst] LLM response received in {int((_time.monotonic() - start_time) * 1000)}ms")
         try:
@@ -132,7 +120,6 @@ min_sources 降级规则（分析时使用）：
         # Extract trace enrichment data from findings
         reasoning_chain = []
         trace_sources = []
-        best_confidence = {"score": 0, "level": "low"}
         # Build lookup from Collector's sources (passed via input_data["sources"])
         collector_src_map = {s["source_id"]: s for s in sources if isinstance(s, dict) and s.get("source_id")}
         for f in parsed.get("findings", []):
@@ -147,12 +134,9 @@ min_sources 降级规则（分析时使用）：
                     "url": matched.get("url", ""),
                     "snippet": f.get("quote", ""),
                 })
-            conf = f.get("confidence", {})
-            if conf.get("score", 0) > best_confidence.get("score", 0):
-                best_confidence = conf
         return AgentResult(
             success=True, output=result.model_dump(), llm_response=llm_response,
-            reasoning_chain=reasoning_chain, sources=trace_sources, confidence=best_confidence,
+            reasoning_chain=reasoning_chain, sources=trace_sources,
         )
 
     def _count_sources(self, raw_data: dict, sources: list | None = None) -> int:

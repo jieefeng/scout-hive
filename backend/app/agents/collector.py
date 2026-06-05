@@ -244,8 +244,6 @@ class Collector(AgentBase):
                 )
             ],
         )
-        confidence_score = 0.7 if collected_texts else 0.3
-
         # Build reasoning chain for trace display
         elapsed_s = round(_time.monotonic() - start_time, 1)
         attempted_urls = min(len(target_urls), 5)
@@ -268,6 +266,6 @@ class Collector(AgentBase):
 
         return AgentResult(
             success=True, output=raw_data.model_dump(), llm_response=llm_response,
-            sources=sources, confidence={"score": confidence_score, "level": "medium" if collected_texts else "low"},
+            sources=sources,
             reasoning_chain=reasoning_chain,
         )

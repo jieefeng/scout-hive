@@ -318,7 +318,6 @@ class Orchestrator:
                     llm_response=result.llm_response,
                     reasoning_chain=result.reasoning_chain,
                     sources=result.sources,
-                    confidence=result.confidence,
                     error=str(result.error_message) if not result.success else None,
                 )
                 if result.success:
