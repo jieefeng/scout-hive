@@ -38,8 +38,9 @@
 - ❌ 不做跨 parse 的语义缓存
 - ❌ 不做维度的运行时扩充（要扩充就改 `DEFAULT_SCHEMA`）
 - ❌ 不改 `TaskStatus` 枚举（不引入 DRAFT）
-- ❌ 不改 `StateManager` 表结构（不入蓝图）
+- ❌ 不改 `StateManager` 表结构（不入蓝图、也不存 parse 阶段的 trace）
 - ❌ 不降级到旧路径（详见 4/5 错误处理）
+- ❌ parse 阶段 TaskParser 的 1-2 次 LLM 调用 trace 暂不入库——失败时通过 422 `detail.raw_response` 拿最后一次原文，成功时由 confirm 阶段新建 task 的后续 trace 覆盖展示需求
 
 ## 怎么做
 
