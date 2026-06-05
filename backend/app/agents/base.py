@@ -100,6 +100,7 @@ class AgentBase(ABC):
             sources=sources or [],
             confidence=confidence or {},
             llm_metadata=llm_meta,
+            error_message=error or "",
         )
 
     @staticmethod

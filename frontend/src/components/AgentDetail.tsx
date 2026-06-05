@@ -4,6 +4,7 @@ import type { TraceRecord, ReasoningStep, TraceSource } from '../types';
 interface AgentDetailProps {
   trace: TraceRecord | null;
   nodeId?: string | null;
+  nodeStatus?: string;
 }
 
 /* ── Agent color themes ── */
@@ -257,7 +258,7 @@ function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: 
 }
 
 /* ── Main component ── */
-export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
+export default function AgentDetail({ trace, nodeId, nodeStatus }: AgentDetailProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
   if (!nodeId) {
@@ -350,6 +351,28 @@ export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
         </div>
         <ConfidenceRing score={confidence.score} level={confidence.level} accent={theme.accent} />
       </div>
+
+      {/* ── Error banner (failed nodes) ── */}
+      {trace.error_message && (
+        <div style={{
+          margin: '16px 24px 0', padding: '14px 18px', borderRadius: '12px',
+          background: '#fef2f2', border: '1px solid #fecaca',
+          display: 'flex', alignItems: 'flex-start', gap: '12px',
+        }}>
+          <span style={{ fontSize: '1.2rem', flexShrink: 0, marginTop: '1px' }}>❌</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b', marginBottom: '4px' }}>
+              执行失败
+            </div>
+            <div style={{
+              fontSize: '0.82rem', color: '#b91c1c', lineHeight: 1.5,
+              wordBreak: 'break-word',
+            }}>
+              {trace.error_message}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Metrics strip ── */}
       <div style={{
