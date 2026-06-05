@@ -26,6 +26,32 @@
 
 - 不改 TraceRecord 模型结构
 - 不改 AgentBase._build_trace()
+
+### 微调：TraceSource 加 title 字段
+
+`backend/app/models/trace.py` 的 `TraceSource` 需要加一个可选 `title` 字段，否则 Pydantic v2 会拒绝 sources 中的额外字段：
+
+```python
+class TraceSource(BaseModel):
+    source_id: str
+    type: str
+    url: str = ""
+    title: str = ""      # 新增：网页标题
+    snippet: str = ""
+    fetched_at: str | None = None
+```
+
+同步更新前端类型 `frontend/src/types/index.ts`：
+
+```typescript
+export interface TraceSource {
+  source_id: string;
+  type: string;
+  url: string;
+  title?: string;    // 新增：网页标题
+  snippet: string;
+}
+```
 - 不改其他 Agent（Analyst/Writer/Reviewer）的展示逻辑
 - 不改 sources 侧边栏（其他 Agent 可能用到）
 
@@ -57,6 +83,22 @@ reasoning_chain = [
 - 搜索结果数：`len(all_search_results)`
 - 成功采集数：`len(collected_texts)`
 - 耗时：`_time.monotonic() - start_time`
+
+**sources 补充 title 字段：**
+
+当前 sources 构建（第 201-206 行）只有 `source_id`、`type`、`url`、`snippet`，没有 `title`。需要从 `url_to_search_result` 中取 title 一并存入：
+
+```python
+sources.append({
+    "source_id": str(uuid.uuid4()),
+    "type": "web",
+    "url": url,
+    "title": search_result.get("title", ""),  # 新增
+    "snippet": text[:300],
+})
+```
+
+同理，fallback 分支（第 209-217 行）也要补 title。
 
 ### 前端：`frontend/src/components/TraceBrowser.tsx`
 
