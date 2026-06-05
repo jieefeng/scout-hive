@@ -59,7 +59,6 @@ class DAGBlueprint(BaseModel):
 class TraceabilityConfig(BaseModel):
     level: Literal["full", "summary", "none"] = "full"
     include_reasoning: bool = True
-    include_confidence: bool = True
 
 
 class TaskDAG(BaseModel):
