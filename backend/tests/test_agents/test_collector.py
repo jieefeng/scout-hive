@@ -256,7 +256,18 @@ async def test_collector_produces_reasoning_chain_with_strategy_and_summary(mock
         model="test",
     )
 
-    result = await collector.run({"target": "douyin", "dimension": "features"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
+
+        result = await collector.run({"target": "douyin", "dimension": "features"})
 
     assert result.success is True
     assert len(result.reasoning_chain) == 2
