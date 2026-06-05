@@ -28,7 +28,6 @@ export interface TraceRecord {
   output: Record<string, unknown>;
   reasoning_chain: ReasoningStep[];
   sources: TraceSource[];
-  confidence: { score: number; level: string };
   llm_metadata: { model: string; tokens_used: number; latency_ms: number };
   revision_round?: number;
   error_message?: string;
