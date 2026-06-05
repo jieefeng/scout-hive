@@ -293,30 +293,6 @@ export default function TraceBrowser({ traces }: TraceBrowserProps) {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{
-              flex: '1 1 200px', padding: '16px', borderRadius: '12px',
-              background: '#fff', border: '1px solid #e2e8f0',
-            }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>置信度</h4>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ flex: 1, height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${(selectedTrace.confidence?.score || 0) * 100}%`,
-                    background: selectedTrace.confidence?.level === 'high'
-                      ? 'linear-gradient(90deg, #22c55e, #16a34a)'
-                      : selectedTrace.confidence?.level === 'medium'
-                        ? 'linear-gradient(90deg, #f59e0b, #d97706)'
-                        : 'linear-gradient(90deg, #ef4444, #dc2626)',
-                    height: '100%', borderRadius: '4px', transition: 'width 0.5s ease',
-                  }} />
-                </div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', minWidth: '40px', textAlign: 'right' }}>
-                  {Math.round((selectedTrace.confidence?.score || 0) * 100)}%
-                </span>
-              </div>
-            </div>
-
             <div style={{
               flex: '1 1 200px', padding: '16px', borderRadius: '12px',
               background: '#fff', border: '1px solid #e2e8f0',
