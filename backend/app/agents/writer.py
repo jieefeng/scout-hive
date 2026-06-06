@@ -5,6 +5,8 @@ from app.llm.base import Message
 
 
 class Writer(AgentBase):
+    enforce_rc = True
+
     SYSTEM_PROMPT_TABLE = """你是一个报告撰写专家。根据分析结果，生成结构化的 HTML 竞品分析报告。
 
 [强制格式: table]
@@ -28,8 +30,12 @@ class Writer(AgentBase):
 - 必须使用输入数据中的 "dimension" 字段值作为报告标题/维度列名称
 - **绝对禁止**自行发明或改写维度名称
 
+关键规则（新增）：
+- 你必须输出 `reasoning_chain: [{step, thought, source_ref?}]` 至少 1 条
+- 这是答辩展示用，缺漏会重试
+
 输出 JSON 格式：
-{"report_html": "<div class='report'>...</div>", "summary": "报告摘要"}"""
+{"report_html": "<div class='report'>...</div>", "summary": "报告摘要", "reasoning_chain": [{"step": <int>, "thought": "<解释>", "source_ref": "<source_id>"}]}"""
 
     SYSTEM_PROMPT_PARAGRAPH = """你是一个报告撰写专家。根据分析结果，生成结构化的 HTML 竞品分析报告。
 
@@ -51,8 +57,12 @@ class Writer(AgentBase):
 - 必须使用输入数据中的 "dimension" 字段值作为报告标题
 - **绝对禁止**自行发明或改写维度名称
 
+关键规则（新增）：
+- 你必须输出 `reasoning_chain: [{step, thought, source_ref?}]` 至少 1 条
+- 这是答辩展示用，缺漏会重试
+
 输出 JSON 格式：
-{"report_html": "<div class='report'>...</div>", "summary": "报告摘要"}"""
+{"report_html": "<div class='report'>...</div>", "summary": "报告摘要", "reasoning_chain": [{"step": <int>, "thought": "<解释>", "source_ref": "<source_id>"}]}"""
 
     async def execute(self, input_data: dict) -> AgentResult:
         output_type = input_data.get("output_type", "paragraph")
@@ -89,7 +99,10 @@ class Writer(AgentBase):
             )
         # Forward Collector's sources for trace display
         collector_sources = input_data.get("sources", [])
-        return AgentResult(
+        result = AgentResult(
             success=True, output=parsed, llm_response=llm_response,
             sources=collector_sources,
+            reasoning_chain=parsed.get("reasoning_chain", []) if isinstance(parsed, dict) else [],
         )
+        result = await self._enforce_reasoning_chain(input_data, result)
+        return result

@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -21,7 +22,18 @@ class AgentResult(BaseModel):
     sources: list[dict] = Field(default_factory=list)
 
 
+# Reasoning chain 缺失时的重试 hint
+RC_MISSING_HINT = (
+    "⚠️ 上一轮输出缺少 reasoning_chain。请输出至少 1 条结构化步骤："
+    '[{"step": <int>, "thought": "<解释你为什么这么判断>", "source_ref"?: "<来源ID>"}]。'
+    "reasoning_chain 字段是答辩展示用，缺漏会被记录。"
+)
+
+
 class AgentBase(ABC):
+    # 类属性：子类显式 override 启用
+    enforce_rc: bool = False
+
     def __init__(self, name: str, llm_adapter: LLMAdapter | None = None):
         self.name = name
         self.llm = llm_adapter
@@ -68,6 +80,66 @@ class AgentBase(ABC):
             raise RuntimeError(f"Agent {self.name} has no LLM adapter")
         async for chunk in self.llm.stream_chat(messages, **kwargs):
             yield chunk
+
+    async def _enforce_reasoning_chain(
+        self, input_data: dict, result: AgentResult
+    ) -> AgentResult:
+        """若 enforce_rc=True 且 reasoning_chain 为空，调 1 次重试补。
+
+        子类在 execute() 末尾调用本方法（带回原始 messages 列表做 hint 上下文）。
+        """
+        if not (self.enforce_rc and result.success and not result.reasoning_chain):
+            return result
+
+        # 用 input_data 转 JSON 字符串作为 user 消息
+        messages = self._build_rc_retry_messages(input_data, result)
+        try:
+            retry_resp = await self.chat(messages)
+        except Exception as e:
+            # 重试失败：保留原 result，trace 标 [RC retry failed]
+            if result.trace:
+                result.trace.error_message = (
+                    (result.trace.error_message or "") + " [RC retry failed]"
+                )
+            return result
+
+        # 尝试从 retry_resp 解析 reasoning_chain
+        parsed_chain = self._extract_reasoning_chain(retry_resp)
+        if parsed_chain:
+            result.reasoning_chain = parsed_chain
+            result.llm_response = retry_resp
+            return result
+
+        # 第二次仍空：接受但在 trace 上加标记
+        if result.trace:
+            result.trace.error_message = (
+                (result.trace.error_message or "") + " [RC missing]"
+            )
+        return result
+
+    def _build_rc_retry_messages(
+        self, input_data: dict, result: AgentResult
+    ) -> list[Message]:
+        """构造重试消息。子类可 override 自定义（如 Analyst 用 JSON dump）。"""
+        return [
+            Message(role="user", content=json.dumps(input_data, ensure_ascii=False, default=str)),
+            Message(role="user", content=RC_MISSING_HINT),
+        ]
+
+    @staticmethod
+    def _extract_reasoning_chain(llm_response: LLMResponse) -> list[dict]:
+        """从 LLM 响应中尝试解析 reasoning_chain。"""
+        content = (llm_response.content or "").strip()
+        # Strip markdown code fences
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(lines[1:-1]) if len(lines) >= 2 else content.lstrip("`")
+        try:
+            data = json.loads(content)
+        except Exception:
+            return []
+        chain = data.get("reasoning_chain") or []
+        return chain if isinstance(chain, list) else []
 
     def _build_trace(
         self,

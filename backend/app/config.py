@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LLMAdapterConfig(BaseModel):
@@ -48,11 +48,32 @@ class AnySearchConfig(BaseModel):
     max_results_per_query: int = 5
 
 
+class PricingTier(BaseModel):
+    """CNY / 1k tokens 定价。"""
+    in_cost: float = Field(alias="in")
+    out_cost: float = Field(alias="out")
+
+    model_config = {"populate_by_name": True}
+
+
+class LLMPricingConfig(BaseModel):
+    """LLM 定价表。键为 model 名（含 'default' 兜底）。"""
+    pricing: dict[str, PricingTier] = Field(default_factory=dict)
+
+    def cost_cny(self, model: str, tokens_in: int, tokens_out: int) -> float:
+        """估算成本（CNY）。未知 model 走 'default'，无 default 走 0。"""
+        tier = self.pricing.get(model) or self.pricing.get("default")
+        if not tier:
+            return 0.0
+        return (tokens_in / 1000.0) * tier.in_cost + (tokens_out / 1000.0) * tier.out_cost
+
+
 class AppConfig(BaseModel):
     server: ServerConfig
     llm: LLMConfig
     dag: DAGConfig
     anysearch: AnySearchConfig = AnySearchConfig()
+    llm_pricing: LLMPricingConfig = LLMPricingConfig()
 
 
 def load_config(config_path: str | None = None) -> AppConfig:
@@ -74,4 +95,7 @@ def load_config(config_path: str | None = None) -> AppConfig:
         return obj
 
     resolved = resolve_env(raw)
+    # llm_pricing 在 YAML 里是扁平 {model: {in, out}}，需包成 {pricing: ...} 喂给 Pydantic。
+    if isinstance(resolved, dict) and "llm_pricing" in resolved and isinstance(resolved["llm_pricing"], dict):
+        resolved["llm_pricing"] = {"pricing": resolved["llm_pricing"]}
     return AppConfig(**resolved)

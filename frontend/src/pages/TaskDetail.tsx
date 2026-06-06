@@ -6,6 +6,7 @@ import AgentDetail from '../components/AgentDetail';
 import TraceBrowser from '../components/TraceBrowser';
 import ReviewTimeline from '../components/ReviewTimeline';
 import ReportViewer from '../components/ReportViewer';
+import TaskOverviewTab from '../components/TaskOverviewTab';
 import type { TraceRecord } from '../types';
 
 const POLL_INTERVAL = 3000;
@@ -18,19 +19,30 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string; 
   stopped:   { color: '#f59e0b', bg: '#fffbeb', label: '已停止', icon: '⏹️' },
 };
 
+type TabKey = 'overview' | 'dag' | 'report' | 'trace';
+
+const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
+  { key: 'overview', label: '总览', icon: '📊' },
+  { key: 'dag',      label: 'DAG', icon: '🕸️' },
+  { key: 'report',   label: '报告', icon: '📄' },
+  { key: 'trace',    label: 'Trace', icon: '🔍' },
+];
+
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const { currentTask, loading, loadTask } = useTaskStore();
+  const { currentTask, loading, loadTask, metrics, loadMetrics } = useTaskStore();
   const [selectedTrace, setSelectedTrace] = useState<TraceRecord | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!taskId) return;
     loadTask(taskId);
-  }, [taskId, loadTask]);
+    loadMetrics(taskId, true);
+  }, [taskId, loadTask, loadMetrics]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -52,6 +64,12 @@ export default function TaskDetail() {
     setSelectedNodeId(nodeId);
     const trace = currentTask?.traces?.find(t => t.node_id === nodeId) || null;
     setSelectedTrace(trace);
+    setPanelOpen(true);
+  };
+
+  const handleSelectTrace = (trace: TraceRecord | null, nodeId: string | null) => {
+    setSelectedTrace(trace);
+    setSelectedNodeId(nodeId);
     setPanelOpen(true);
   };
 
@@ -217,8 +235,40 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      {/* ── Report Section ── */}
-      {currentTask.report_html && (
+      {/* ── Tab 栏 ── */}
+      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', gap: '0.5rem' }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.75rem 1.25rem',
+              background: activeTab === tab.key ? '#eff6ff' : 'transparent',
+              color: activeTab === tab.key ? '#3b82f6' : '#64748b',
+              border: 'none',
+              borderBottom: activeTab === tab.key ? '2px solid #3b82f6' : '2px solid transparent',
+              marginBottom: '-2px',
+              cursor: 'pointer',
+              fontSize: '0.95rem',
+              fontWeight: activeTab === tab.key ? 600 : 400,
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab: Overview ── */}
+      {activeTab === 'overview' && (
+        <TaskOverviewTab
+          task={currentTask}
+          metrics={metrics}
+          onSelectTrace={handleSelectTrace}
+        />
+      )}
+
+      {/* ── Tab: Report ── */}
+      {activeTab === 'report' && currentTask.report_html && (
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <span style={{
@@ -236,47 +286,86 @@ export default function TaskDetail() {
         </div>
       )}
 
-      {/* ── DAG Section ── */}
-      <div style={{
-        border: '1px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden',
-        background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
-        position: 'relative',
-      }}>
+      {/* ── Tab: DAG ── */}
+      {activeTab === 'dag' && (
         <div style={{
-          padding: '14px 20px', borderBottom: '1px solid #e2e8f0',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          background: 'linear-gradient(180deg, #fafbfc, #f8fafc)',
+          border: '1px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden',
+          background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+          position: 'relative',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              width: '4px', height: '20px', borderRadius: '2px',
-              background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
-            }} />
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>DAG 执行图</h2>
+          <div style={{
+            padding: '14px 20px', borderBottom: '1px solid #e2e8f0',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: 'linear-gradient(180deg, #fafbfc, #f8fafc)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                width: '4px', height: '20px', borderRadius: '2px',
+                background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+              }} />
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>DAG 执行图</h2>
+            </div>
+            <div style={{ display: 'flex', gap: '14px', fontSize: '0.72rem' }}>
+              {[
+                { icon: '⏳', label: '等待' },
+                { icon: '🔄', label: '运行中' },
+                { icon: '✅', label: '完成' },
+                { icon: '❌', label: '失败' },
+                { icon: '⏭️', label: '跳过' },
+              ].map(item => (
+                <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                  <span>{item.icon}</span><span>{item.label}</span>
+                </span>
+              ))}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '14px', fontSize: '0.72rem' }}>
-            {[
-              { icon: '⏳', label: '等待' },
-              { icon: '🔄', label: '运行中' },
-              { icon: '✅', label: '完成' },
-              { icon: '❌', label: '失败' },
-              { icon: '⏭️', label: '跳过' },
-            ].map(item => (
-              <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
-                <span>{item.icon}</span><span>{item.label}</span>
-              </span>
-            ))}
+          <div style={{ height: '60vh', minHeight: '500px' }}>
+            <DagViewer
+              nodeStates={currentTask.node_states}
+              dagBlueprint={currentTask.dag_json}
+              onNodeClick={handleNodeClick}
+              selectedNodeId={selectedNodeId}
+            />
           </div>
         </div>
-        <div style={{ height: '60vh', minHeight: '500px' }}>
-          <DagViewer
-            nodeStates={currentTask.node_states}
-            dagBlueprint={currentTask.dag_json}
-            onNodeClick={handleNodeClick}
-            selectedNodeId={selectedNodeId}
-          />
-        </div>
-      </div>
+      )}
+
+      {/* ── Tab: Trace ── */}
+      {activeTab === 'trace' && (
+        <>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{
+                width: '4px', height: '20px', borderRadius: '2px',
+                background: 'linear-gradient(180deg, #8b5cf6, #7c3aed)',
+              }} />
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>溯源浏览器</h2>
+            </div>
+            <div style={{
+              border: '1px solid #e2e8f0', borderRadius: '14px', minHeight: '400px', overflow: 'hidden',
+              background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+            }}>
+              <TraceBrowser traces={currentTask.traces || []} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{
+                width: '4px', height: '20px', borderRadius: '2px',
+                background: 'linear-gradient(180deg, #f59e0b, #d97706)',
+              }} />
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>审查时间轴</h2>
+            </div>
+            <div style={{
+              border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.25rem',
+              background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+            }}>
+              <ReviewTimeline reviews={currentTask.reviews || []} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Agent Detail Modal ── */}
       {panelOpen && (
@@ -335,39 +424,6 @@ export default function TaskDetail() {
         @keyframes modalSlideIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
         @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
       `}</style>
-
-      {/* ── Below-the-fold sections ── */}
-      <div style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-          <span style={{
-            width: '4px', height: '20px', borderRadius: '2px',
-            background: 'linear-gradient(180deg, #8b5cf6, #7c3aed)',
-          }} />
-          <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>溯源浏览器</h2>
-        </div>
-        <div style={{
-          border: '1px solid #e2e8f0', borderRadius: '14px', minHeight: '400px', overflow: 'hidden',
-          background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
-        }}>
-          <TraceBrowser traces={currentTask.traces || []} />
-        </div>
-      </div>
-
-      <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-          <span style={{
-            width: '4px', height: '20px', borderRadius: '2px',
-            background: 'linear-gradient(180deg, #f59e0b, #d97706)',
-          }} />
-          <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b' }}>审查时间轴</h2>
-        </div>
-        <div style={{
-          border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.25rem',
-          background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
-        }}>
-          <ReviewTimeline reviews={currentTask.reviews || []} />
-        </div>
-      </div>
     </div>
   );
 }

@@ -7,6 +7,8 @@ from app.models.review import ReviewCheck, ReviewIssue, ReviewResult
 
 
 class Reviewer(AgentBase):
+    enforce_rc = True
+
     SYSTEM_PROMPT = """你是一个质检审查员。你的职责是检查报告的格式和溯源完整性，不审查逻辑正确性。
 
 检查维度：
@@ -15,6 +17,10 @@ class Reviewer(AgentBase):
 
 规则：
 - 无来源 → 直接退回
+
+关键规则（新增）：
+- 你必须输出 `reasoning_chain: [{step, thought, source_ref?}]` 至少 1 条
+- 这是答辩展示用，缺漏会重试
 
 输出 JSON 格式：
 {
@@ -60,7 +66,7 @@ class Reviewer(AgentBase):
             {"step": i + 1, "thought": f"检查 {c.get('dimension', '未知')} — {c.get('status', '未知')}"}
             for i, c in enumerate(parsed.get("checks", []))
         ]
-        return AgentResult(
+        return await self._enforce_reasoning_chain(input_data, AgentResult(
             success=True, output=review.model_dump(), llm_response=llm_response,
             reasoning_chain=reasoning_chain,
-        )
+        ))
