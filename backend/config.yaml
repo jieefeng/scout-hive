@@ -27,3 +27,10 @@ anysearch:
   search_timeout: 15
   extract_timeout: 30
   max_results_per_query: 5
+
+# LLM 定价（CNY / 1k tokens，按 model 区分；未匹配 model 走 default）
+llm_pricing:
+  "qwen3.6-flash-2026-04-16": {in: 0.0008, out: 0.002}
+  "claude-opus-4-8":          {in: 0.015,  out: 0.075}
+  "gpt-5.2":                  {in: 0.005,  out: 0.015}
+  default:                     {in: 0.001,  out: 0.002}

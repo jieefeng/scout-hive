@@ -66,6 +66,9 @@ def get_task_metrics(task_id: str):
     completed_count = sum(1 for s in task.node_states.values() if s == NodeStatus.COMPLETED)
     failed_count = sum(1 for s in task.node_states.values() if s == NodeStatus.FAILED)
 
+    # feedback_rounds = reviews 中 verdict == "rejected" 的次数
+    feedback_rounds = sum(1 for r in (task.reviews or []) if r.get("verdict") == "rejected")
+
     snapshot = TaskMetricsSnapshot(
         task_id=task_id,
         created_at=task.created_at,
@@ -73,14 +76,14 @@ def get_task_metrics(task_id: str):
         node_count=len(task.node_states),
         completed_count=completed_count,
         failed_count=failed_count,
-        feedback_rounds=0,  # TODO: 从 task.reviews 推算（plan 阶段不深挖）
+        feedback_rounds=feedback_rounds,
         total_tokens=total_tokens,
         total_cost_cny=round(total_cost, 4),
         llm_call_count=llm_call_count,
         slow_nodes=slow_nodes,
         agent_breakdown=by_agent,
         quality={
-            "feedback_rounds": 0,  # 同上 TODO
+            "feedback_rounds": feedback_rounds,
             "passed_count": completed_count,  # 简化为 completed 数
         },
         rc_missing_count=rc_missing,
