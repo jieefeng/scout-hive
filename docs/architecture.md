@@ -94,3 +94,95 @@ flowchart LR
 4. 全部 completed → `task_completed` 事件
 
 **断点续跑**：StateManager 持久化每节点状态，服务重启调 `recover_running_tasks()` 恢复。
+
+## 5. 数据模型
+
+**3 层数据**：
+
+```
+用户输入 → TaskInput{competitors[], dimensions[]}
+            ↓
+执行中 → TaskState{task_id, status, node_states, dag_json, traces, reviews}
+            ↓
+终态 → ReportPayload{report_html, full_traces, full_reviews}
+```
+
+**核心 Pydantic 模型**（`backend/app/models/`）：
+
+| 模型 | 关键字段 | 用途 |
+|------|---------|------|
+| `Task` | task_id, status, competitors, dimensions, dag_json, node_states | 任务状态 |
+| `DAGNode` | id, agent, action, params, depends_on | DAG 节点 |
+| `DAGEdge` | from_node, to_node | DAG 边 |
+| `FeedbackEdge` | from_node, to_node, max_iterations, escalation | 反馈边 |
+| `TraceRecord` | trace_id, node_id, agent, timestamp, input_refs, output, reasoning_chain, sources, llm_metadata, error_message | 单节点 trace |
+| `Claim` | claim_id, claim_text, quote, source_ref, quote_type, confidence(已弃用) | 分析结论 |
+| `AnalysisResult` | findings: [Claim] | Analyst 输出 |
+| `ReviewCheck` | check_id, criterion, passed, evidence | Reviewer 输出 |
+
+**Schema 驱动**（`backend/app/schema/mvp_defaults.py`）：
+- `DEFAULT_SCHEMA`：定义 `groups: [{name, dimensions: [{name, keywords, output_type, evidence_threshold, tracking_sources}]}]`
+- `Collector` / `Analyst` 按 `dim_config` 调 LLM
+- LLM 自由发挥 = 质量不可控（spec 决策记录）
+
+## 6. 关键设计决策
+
+### 6.1 「1 大脑 + 1 心脏 + N 手脚」分层
+
+**为什么**：把 LLM 决策（TaskParser）与代码调度（Orchestrator）解耦，调度逻辑可单元测试。
+
+**权衡**：TaskParser 输出需要严格 JSON Schema 校验（失败重试 1 次，再失败 422 返错给用户，不降级到结构化路径）。
+
+### 6.2 feedback_edges 与主 edges 分离
+
+**为什么**：让主流程（Collector → Analyst → Writer）是 DAG，反馈（Reviewer → Writer）是带计数的循环。
+
+**权衡**：3 轮上限是 hard-coded，超限强制 `escalation: auto_approve`。可调，但目前未做配置化（YAGNI）。
+
+### 6.3 两条入口（parse / tasks）
+
+**为什么**：
+- `POST /api/tasks`（结构化）：调试与已有竞品清单
+- `POST /api/tasks/parse` → `/confirm`（NLP）：用户自然语言驱动
+
+**权衡**：维护 2 套入口 = 双倍测试成本。决策：parse 路径的维度强制在 `DEFAULT_SCHEMA` 内，不允许 LLM 自由发挥。
+
+### 6.4 溯源铁律
+
+**为什么**：课题强调「每条分析结论均有据可查」。
+
+**做法**：
+- `Claim` 强制 `quote + source_ref`，无引用直接丢弃
+- `quote_type: "paraphrased"` 时 confidence 权重 ×0.7
+- 写死逻辑，不做软提示
+
+### 6.5 适配层而非多 LLM 直调
+
+**为什么**：4 个 LLM provider（Claude/OpenAI/Bailian/Local）的 SDK 差异巨大，封装为 `LLMAdapter` 后业务无感。
+
+**做法**：`LLMRegistry` 工厂按 `config.llm.adapters` 创建实例，支持按 Agent 绑定不同模型（如 Reviewer 用便宜模型，Analyst 用强模型）。
+
+### 6.6 SQLite 而非 Postgres
+
+**为什么**：单文件、零部署、断点续跑够用。
+
+**权衡**：并发写性能上限 ~1000 TPS。对本系统（任务级别串行）足够。生产化时需迁 Postgres。
+
+## 7. 已知限制与不做事项
+
+按 spec（`2026-06-06-core-demo-readiness-design.md`）明确不做的：
+
+- ❌ Docker / docker-compose
+- ❌ CI/CD（无 GitHub Actions / 自动化测试流水线）
+- ❌ 监控（无 OTel / metrics，仅 logging）
+- ❌ 限流 / 防滥用（API 完全开放）
+- ❌ 性能压测（无 benchmark）
+- ❌ 数据库迁移工具（SQLite + ALTER TABLE 够用）
+- ❌ 答辩 Demo 脚本 / 录屏材料
+- ❌ 前端测试（无 cypress / playwright）
+- ❌ 真实 LLM 跑通已用 `scripts/demo_e2e.py` 解决（见 Section 1）
+
+**已识别的技术债**：
+- confidence 概念已清理（commit 5f8b121），但旧文档可能残留
+- `bash.exe.stackdump` 在 frontend/ 下（WSA 残留），可清理
+- 任何 LLM 调用都未做 cost 估算 / quota 监控（运行 3 个竞品约消耗 ~50k tokens）
