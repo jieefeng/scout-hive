@@ -7,7 +7,11 @@
 import logging
 from typing import Any
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
 from app.agents.task_parser import TaskParser
+from app.schema.mvp_defaults import load_default_schema
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +109,65 @@ async def parse_task_blueprint(
         "summary": parsed.get("summary", ""),
         "raw_response": raw_truncated,
     }
+
+
+# ---- HTTP 入口 ----
+
+router = APIRouter(prefix="/api/tasks", tags=["parse"])
+
+# 模块级单例，由 init_router 注入
+_orch = None  # type: ignore[var-annotated]
+
+
+def init_router(orch):
+    """main.create_app 启动时调用。"""
+    global _orch
+    _orch = orch
+
+
+class ParseRequest(BaseModel):
+    message: str = Field(min_length=0, max_length=10000)
+
+
+class ParseResponse(BaseModel):
+    blueprint: dict
+    competitors: list[str]
+    dimensions: list[str]
+    summary: str = ""
+
+
+HINT_FALLBACK = "请重写需求使其更具体，或使用 POST /api/tasks 直接提交结构化数据"
+
+
+@router.post("/parse", response_model=ParseResponse)
+async def parse_task(req: ParseRequest):
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(
+            status_code=422,
+            detail={"error_type": "empty_message", "hint": "需求不能为空"},
+        )
+    # 截断超长 message（避免烧 token）
+    message = message[:MESSAGE_MAX_LEN]
+
+    task_parser = _orch.agents["TaskParser"]
+    schema = load_default_schema().model_dump()
+    result = await parse_task_blueprint(message, task_parser, schema)
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_type": result["error_type"],
+                "raw_response": result.get("raw_response", ""),
+                "error_message": result.get("error_message", ""),
+                "hint": HINT_FALLBACK,
+            },
+        )
+
+    return ParseResponse(
+        blueprint=result["blueprint"],
+        competitors=result["competitors"],
+        dimensions=result["dimensions"],
+        summary=result["summary"],
+    )
