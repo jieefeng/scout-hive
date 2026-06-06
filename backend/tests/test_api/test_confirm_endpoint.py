@@ -88,7 +88,7 @@ async def test_confirm_endpoint_empty_blueprint(app):
             json={"blueprint": {}},
         )
     assert resp.status_code == 422
-    assert resp.json()["detail"]["error_type"] in {"blueprint_tampered", "topology_error"}
+    assert resp.json()["detail"]["error_type"] == "blueprint_tampered"
 
 
 @pytest.mark.asyncio

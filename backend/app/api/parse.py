@@ -125,11 +125,11 @@ _sm = None    # type: ignore[var-annotated]
 _bus = None   # type: ignore[var-annotated]
 
 
-def init_router(orch, sm, bus):
+def init_router(sm, orch, bus):
     """main.create_app 启动时调用。"""
-    global _orch, _sm, _bus
-    _orch = orch
+    global _sm, _orch, _bus
     _sm = sm
+    _orch = orch
     _bus = bus
 
 
@@ -219,7 +219,6 @@ async def confirm_parse(req: ParseConfirmRequest):
         dimensions,
         req.blueprint,
     )
-    _sm.update_task_status(task_id, TaskStatus.PENDING)
     task.progress = _sm.calculate_progress(task)
 
     async def run_dag():

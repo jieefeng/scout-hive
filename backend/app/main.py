@@ -56,7 +56,7 @@ def create_app() -> FastAPI:
 
     tasks.init_router(state_manager, orchestrator, event_bus)
     websocket.init_router(event_bus)
-    parse_api.init_router(orchestrator, state_manager, event_bus)
+    parse_api.init_router(state_manager, orchestrator, event_bus)
     app.include_router(tasks.router)
     app.include_router(websocket.router)
     app.include_router(parse_api.router)
