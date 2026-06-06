@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient, ASGITransport
 from app.main import create_app
-from app.llm.base import LLMResponse
 
 
 VALID_BLUEPRINT = {
