@@ -108,7 +108,6 @@ async def run_one(competitor: str, run_dir: Path) -> dict:
     Raises:
         RuntimeError: 任务失败时
     """
-    message = DEFAULT_MESSAGE_TEMPLATE.format(competitor=competitor)
     async with httpx.AsyncClient(base_url=API_BASE) as client:
         print(f"[{competitor}] parse ...", flush=True)
         parsed = await parse_one(client, competitor)
