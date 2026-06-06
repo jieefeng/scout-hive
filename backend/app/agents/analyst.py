@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class Analyst(AgentBase):
+    enforce_rc = True
+
     SYSTEM_PROMPT = """你是一个竞品分析专家。根据采集到的原始数据，进行结构化分析。
 
 关键规则：
@@ -43,7 +45,11 @@ min_sources 降级规则（分析时使用）：
 - 1 <= sources < min_sources：降级输出，在 claim 前加 ⚠️
 - sources == 0：标记为 data_insufficient，claim 前加 "⚠️ 数据不足："
 
-注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。"""
+注意：降级标记（⚠️）直接加在 claim 文本前面，不另外输出单独字段。
+
+关键规则（新增）：
+- 你必须输出 `reasoning_chain: [{step, thought, source_ref?}]` 至少 1 条
+- 这是答辩展示用，缺漏会重试"""
 
     async def execute(self, input_data: dict) -> AgentResult:
         import time as _time
@@ -134,10 +140,12 @@ min_sources 降级规则（分析时使用）：
                     "url": matched.get("url", ""),
                     "snippet": f.get("quote", ""),
                 })
-        return AgentResult(
+        agent_result = AgentResult(
             success=True, output=result.model_dump(), llm_response=llm_response,
             reasoning_chain=reasoning_chain, sources=trace_sources,
         )
+        # 强制 reasoning_chain：若为空（enforce_rc=True）则触发重试
+        return await self._enforce_reasoning_chain(input_data, agent_result)
 
     def _count_sources(self, raw_data: dict, sources: list | None = None) -> int:
         """计算独立来源的数量。优先用 orchestrator 传入的 sources，否则从 raw_data 推断。"""
