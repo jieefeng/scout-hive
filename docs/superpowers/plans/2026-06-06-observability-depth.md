@@ -580,11 +580,12 @@ class DummyAgent(AgentBase):
     """最小 Agent 子类，用于测试 enforce_rc 行为。"""
     enforce_rc = True
 
-    def __init__(self):
+    def __init__(self, chain_present: bool = False):
         super().__init__("Dummy")
         # mock LLM
         self.llm = MagicMock()
         self.llm.chat = AsyncMock()
+        self._chain_present = chain_present
 
     async def execute(self, input_data):
         return await self._enforce_reasoning_chain(
@@ -592,7 +593,10 @@ class DummyAgent(AgentBase):
             AgentResult(
                 success=True,
                 output={"ok": True},
-                reasoning_chain=[],  # 空，触发重试
+                # 关键：让 test 2 能真的测 "chain present" 路径
+                reasoning_chain=(
+                    [{"step": 1, "thought": "..."}] if self._chain_present else []
+                ),
                 llm_response=LLMResponse(content="{}", model="x", tokens_used=10, latency_ms=100),
             ),
         )
@@ -624,18 +628,15 @@ def test_enforce_rc_triggers_retry_when_chain_empty():
 
     async def main():
         agent = DummyAgent()
-        # 第一次 LLM 调用返空 RC；第二次返带 RC 的 JSON
-        agent.llm.chat.side_effect = [
-            LLMResponse(content='{}', model="x", tokens_used=10, latency_ms=100),
-            LLMResponse(
-                content='{"output": {"ok": true}, "reasoning_chain": [{"step": 1, "thought": "..."}]}',
-                model="x", tokens_used=20, latency_ms=100,
-            ),
-        ]
+        # 重试只调 1 次 chat（DummyAgent.execute 直接调 _enforce_reasoning_chain）
+        agent.llm.chat.return_value = LLMResponse(
+            content='{"output": {"ok": true}, "reasoning_chain": [{"step": 1, "thought": "..."}]}',
+            model="x", tokens_used=20, latency_ms=100,
+        )
         result = await agent.execute({"input": "test"})
-        # chat 被调 2 次
-        assert agent.llm.chat.await_count == 2
-        # 第二次的 RC 被合并
+        # chat 被调 1 次（重试）
+        assert agent.llm.chat.await_count == 1
+        # 重试的 RC 被合并
         assert len(result.reasoning_chain) == 1
         assert result.reasoning_chain[0]["step"] == 1
 
@@ -646,16 +647,17 @@ def test_enforce_rc_no_retry_when_chain_present():
     """enforce_rc=True 但 RC 非空 → 不重试。"""
 
     async def main():
-        agent = DummyAgent()
-        # 第一次直接返带 RC
+        agent = DummyAgent(chain_present=True)  # 关键：让 AgentResult 起始就带 RC
         agent.llm.chat.return_value = LLMResponse(
             content='{"output": {"ok": true}, "reasoning_chain": [{"step": 1, "thought": "..."}]}',
             model="x", tokens_used=20, latency_ms=100,
         )
         result = await agent.execute({"input": "test"})
-        # 只调 1 次
-        assert agent.llm.chat.await_count == 1
+        # 不重试，chat 0 次
+        assert agent.llm.chat.await_count == 0
+        # 原始 RC 保持
         assert len(result.reasoning_chain) == 1
+        assert result.reasoning_chain[0]["step"] == 1
 
     asyncio.run(main())
 
@@ -665,15 +667,14 @@ def test_enforce_rc_false_skips_retry():
 
     async def main():
         agent = NonEnforceAgent()
-        # 即便有 mock，也只调 1 次（如果调了会失败因为没设 side_effect）
         agent.llm.chat.return_value = LLMResponse(
             content='{"output": {"ok": true}, "reasoning_chain": [{"step": 1, "thought": "..."}]}',
             model="x", tokens_used=20, latency_ms=100,
         )
         result = await agent.execute({"input": "test"})
-        # 只调 1 次（首次 execute 内的 chat）
-        assert agent.llm.chat.await_count == 1
-        # RC 仍是空（因为 _enforce_reasoning_chain 在 enforce_rc=False 时直接返回原 result）
+        # 不重试，chat 0 次
+        assert agent.llm.chat.await_count == 0
+        # RC 仍是空（enforce_rc=False 早返回）
         assert result.reasoning_chain == []
 
     asyncio.run(main())
