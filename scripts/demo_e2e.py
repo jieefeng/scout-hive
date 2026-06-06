@@ -73,7 +73,7 @@ async def confirm_one(client: httpx.AsyncClient, blueprint: dict) -> str:
     return r.json()["task_id"]
 
 
-async def poll_until_done(client: httpx.AsyncClient, task_id: str, timeout: int = 600) -> dict:
+async def poll_until_done(client: httpx.AsyncClient, task_id: str, timeout: int = 900) -> dict:
     """轮询 GET /api/tasks/{id} 直到 status 终态，返回完整 task dict."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

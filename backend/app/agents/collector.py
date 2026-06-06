@@ -34,11 +34,23 @@ class Collector(AgentBase):
   "strategy": "web_search"
 }"""
 
+    # 已知反爬严格的站点，直接跳过 HTTP 抓取，用 search snippet 兜底
+    BLOCKED_DOMAINS = {"g2.com", "capterra.com", "alternativeto.net", "trustpilot.com"}
+
     async def _fetch_url(self, url: str) -> str:
         """Fetch a URL and extract main text content using trafilatura."""
+        from urllib.parse import urlparse
+        hostname = urlparse(url).hostname or ""
+        if any(hostname.endswith(d) for d in self.BLOCKED_DOMAINS):
+            logger.info(f"Skipping known blocked domain: {url}")
+            return ""
         try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:  # 10s fallback
-                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+                resp = await client.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                })
                 resp.raise_for_status()
                 text = trafilatura.extract(resp.text, include_comments=False, include_tables=True)
                 return text or ""
