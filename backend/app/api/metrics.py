@@ -1,10 +1,9 @@
-import logging
 from fastapi import APIRouter, HTTPException
 
 from app.engine.state_manager import StateManager
 from app.models.metrics import TaskMetricsSnapshot
+from app.models.task import NodeStatus
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["metrics"])
 
 # 共享依赖（main.py init_router 注入）
@@ -17,7 +16,7 @@ def init_router(sm: StateManager):
 
 
 @router.get("/{task_id}/metrics")
-def get_task_metrics(task_id: str, include_old: bool = True):
+def get_task_metrics(task_id: str):
     """返回任务的聚合 metrics 快照。旧任务返 available: false。"""
     task = state_manager.get_task(task_id)
     if not task:
@@ -25,8 +24,6 @@ def get_task_metrics(task_id: str, include_old: bool = True):
 
     rows = state_manager.query_task_metrics(task_id)
     if not rows:
-        if not include_old:
-            raise HTTPException(status_code=404, detail="no metrics")
         return {
             "task_id": task_id,
             "available": False,
@@ -38,6 +35,8 @@ def get_task_metrics(task_id: str, include_old: bool = True):
     total_tokens = sum(r["tokens_total"] for r in rows)
     total_cost = sum(r["cost_cny"] for r in rows)
     llm_call_count = sum(1 for r in rows if r["llm_latency_ms"] > 0)
+    # 短期启发式：reasoning_steps=0 视为缺失。可能误报（短答无 chain），
+    # 后续可改用 reasoning_chain 长度。
     rc_missing = sum(1 for r in rows if r["reasoning_steps"] == 0 and r["agent"] in {"Analyst", "Writer", "Reviewer"})
 
     # 慢节点 top-3
@@ -64,8 +63,8 @@ def get_task_metrics(task_id: str, include_old: bool = True):
         by_agent[a]["elapsed_ms"] += r["elapsed_ms"]
 
     # node_states 里 completed/failed 计数
-    completed_count = sum(1 for s in task.node_states.values() if str(s) == "NodeStatus.completed")
-    failed_count = sum(1 for s in task.node_states.values() if str(s) == "NodeStatus.failed")
+    completed_count = sum(1 for s in task.node_states.values() if s == NodeStatus.COMPLETED)
+    failed_count = sum(1 for s in task.node_states.values() if s == NodeStatus.FAILED)
 
     snapshot = TaskMetricsSnapshot(
         task_id=task_id,
