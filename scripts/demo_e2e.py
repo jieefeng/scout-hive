@@ -19,6 +19,11 @@ from pathlib import Path
 
 import httpx
 
+# Windows console encoding fix
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 DEFAULT_COMPETITORS = ["Notion AI", "Tana", "Reflect"]
 DEFAULT_MESSAGE_TEMPLATE = "分析 {competitor} 的功能对比与定价策略"
 API_BASE = os.getenv("API_BASE", "http://localhost:5010")
@@ -46,6 +51,87 @@ def check_env() -> bool:
     return True
 
 
+async def parse_one(client: httpx.AsyncClient, competitor: str) -> dict:
+    """POST /api/tasks/parse → blueprint dict."""
+    message = DEFAULT_MESSAGE_TEMPLATE.format(competitor=competitor)
+    r = await client.post("/api/tasks/parse", json={"message": message}, timeout=60)
+    r.raise_for_status()
+    data = r.json()
+    if not data.get("blueprint"):
+        raise RuntimeError(f"parse 失败: {data.get('error_type')} - {data.get('error_message')}")
+    return data
+
+
+async def confirm_one(client: httpx.AsyncClient, blueprint: dict) -> str:
+    """POST /api/tasks/parse/confirm → task_id."""
+    r = await client.post(
+        "/api/tasks/parse/confirm",
+        json={"blueprint": blueprint},
+        timeout=60,
+    )
+    r.raise_for_status()
+    return r.json()["task_id"]
+
+
+async def poll_until_done(client: httpx.AsyncClient, task_id: str, timeout: int = 600) -> dict:
+    """轮询 GET /api/tasks/{id} 直到 status 终态，返回完整 task dict."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = await client.get(f"/api/tasks/{task_id}", timeout=30)
+        r.raise_for_status()
+        task = r.json()
+        status = task.get("status")
+        if status in ("completed", "failed"):
+            return task
+        await asyncio.sleep(5)
+    raise TimeoutError(f"task {task_id} 超时（{timeout}s）")
+
+
+def save_artifacts(task: dict, run_dir: Path) -> tuple[Path, Path]:
+    """保存 report_html 与 traces 到 run_dir，返回路径元组."""
+    task_id = task["task_id"]
+    report_path = run_dir / f"{task_id}_report.html"
+    trace_path = run_dir / f"{task_id}_traces.json"
+    report_path.write_text(task.get("report_html") or "", encoding="utf-8")
+    trace_path.write_text(
+        json.dumps(task.get("traces", []), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return report_path, trace_path
+
+
+async def run_one(competitor: str, run_dir: Path) -> dict:
+    """跑 1 个竞品的完整流程。
+
+    Returns:
+        {competitor, task_id, status, report, trace, findings_count}
+    Raises:
+        RuntimeError: 任务失败时
+    """
+    message = DEFAULT_MESSAGE_TEMPLATE.format(competitor=competitor)
+    async with httpx.AsyncClient(base_url=API_BASE) as client:
+        print(f"[{competitor}] parse ...", flush=True)
+        parsed = await parse_one(client, competitor)
+        print(f"[{competitor}] confirm ...", flush=True)
+        task_id = await confirm_one(client, parsed["blueprint"])
+        print(f"[{competitor}] task_id={task_id}, 轮询中 ...", flush=True)
+        task = await poll_until_done(client, task_id)
+        if task["status"] != "completed":
+            raise RuntimeError(f"[{competitor}] 任务失败: {task.get('error_message')}")
+        report_path, trace_path = save_artifacts(task, run_dir)
+        return {
+            "competitor": competitor,
+            "task_id": task_id,
+            "status": task["status"],
+            "report": str(report_path),
+            "trace": str(trace_path),
+            "findings_count": sum(
+                len(t.get("output", {}).get("findings", []))
+                for t in task.get("traces", [])
+            ),
+        }
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="真实 LLM 端到端 demo")
     p.add_argument("--competitors", default=",".join(DEFAULT_COMPETITORS),
@@ -59,8 +145,17 @@ def main() -> int:
     competitors = [c.strip() for c in args.competitors.split(",") if c.strip()]
     if not check_env():
         return 1
-    print(f"将跑 {len(competitors)} 个竞品：{competitors}")
-    return 0  # 后续 task 补全
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = OUTPUT_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n=== 跑 1 个竞品（{competitors[0]}）===")
+    try:
+        result = asyncio.run(run_one(competitors[0], run_dir))
+    except Exception as e:
+        print(f"✗ {e}")
+        return 1
+    print(f"\n✓ 成功：report={result['report']}, trace={result['trace']}")
+    return 0
 
 
 if __name__ == "__main__":
