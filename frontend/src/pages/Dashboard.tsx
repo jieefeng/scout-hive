@@ -38,9 +38,19 @@ export default function Dashboard() {
     { id: '1', name: '', domain: '' },
   ]);
   const [creating, setCreating] = useState(false);
+  const [nlpMessage, setNlpMessage] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  const goToNlpParse = () => {
+    const trimmed = nlpMessage.trim();
+    if (!trimmed) {
+      navigate('/parse');
+    } else {
+      navigate(`/parse?message=${encodeURIComponent(trimmed)}`);
+    }
+  };
 
   const addCompetitor = () => {
     setCompetitors(prev => [...prev, { id: crypto.randomUUID(), name: '', domain: '' }]);
@@ -83,6 +93,22 @@ export default function Dashboard() {
   return (
     <div style={{ padding: '2rem' }}>
       <h1>竞品分析 Agent 系统</h1>
+
+      <section style={{ marginBottom: 24, padding: 16, background: '#f0f9ff', borderRadius: 8 }}>
+        <h2 style={{ fontSize: 18, marginTop: 0 }}>用自然语言新建分析（AI 调研组长）</h2>
+        <input
+          value={nlpMessage}
+          onChange={(e) => setNlpMessage(e.target.value)}
+          placeholder="例：对比飞书、钉钉、企业微信的 AI 协作能力"
+          style={{ width: '100%', padding: 8, fontSize: 14, boxSizing: 'border-box' }}
+        />
+        <button
+          onClick={goToNlpParse}
+          style={{ marginTop: 8, padding: '8px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+        >
+          → AI 解析并预览
+        </button>
+      </section>
 
       <div style={{ marginBottom: '2rem', padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', background: '#fafafa' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: '0.75rem' }}>新建分析任务</h2>
