@@ -74,7 +74,84 @@ class StateManager:
             self._conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
+        # trace_metrics 表（任务级 metrics 聚合，独立于 traces JSON 列）
+        self._ensure_metrics_table()
         self._conn.commit()
+
+    def _ensure_metrics_table(self):
+        """幂等创建 trace_metrics 表 + 索引。失败只 warn 不抛。"""
+        try:
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS trace_metrics (
+                    trace_id    TEXT PRIMARY KEY,
+                    task_id     TEXT NOT NULL,
+                    node_id     TEXT NOT NULL,
+                    agent       TEXT NOT NULL,
+                    timestamp   TEXT NOT NULL,
+                    elapsed_ms  INTEGER NOT NULL,
+                    llm_latency_ms INTEGER NOT NULL,
+                    tokens_in   INTEGER DEFAULT 0,
+                    tokens_out  INTEGER DEFAULT 0,
+                    tokens_total INTEGER DEFAULT 0,
+                    cost_cny    REAL DEFAULT 0,
+                    reasoning_steps INTEGER DEFAULT 0,
+                    FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+                )
+            """)
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tm_task ON trace_metrics(task_id)"
+            )
+            self._conn.commit()
+        except Exception as e:
+            import logging
+            logging.warning(f"trace_metrics table init: {e}")
+
+    def save_trace_metrics(self, metrics) -> None:
+        """写入单条 trace 指标。trace_id 重复时 REPLACE。"""
+        from app.models.metrics import TraceMetrics
+        if not isinstance(metrics, TraceMetrics):
+            raise TypeError(f"expected TraceMetrics, got {type(metrics)}")
+        self._conn.execute(
+            """
+            INSERT OR REPLACE INTO trace_metrics
+            (trace_id, task_id, node_id, agent, timestamp,
+             elapsed_ms, llm_latency_ms, tokens_in, tokens_out,
+             tokens_total, cost_cny, reasoning_steps)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.trace_id, metrics.task_id, metrics.node_id,
+                metrics.agent, metrics.timestamp,
+                metrics.elapsed_ms, metrics.llm_latency_ms,
+                metrics.tokens_in, metrics.tokens_out,
+                metrics.tokens_total, metrics.cost_cny,
+                metrics.reasoning_steps,
+            ),
+        )
+        self._conn.commit()
+
+    def query_task_metrics(self, task_id: str) -> list[dict]:
+        """查询某任务所有 trace_metrics 行。"""
+        rows = self._conn.execute(
+            """
+            SELECT trace_id, task_id, node_id, agent, timestamp,
+                   elapsed_ms, llm_latency_ms, tokens_in, tokens_out,
+                   tokens_total, cost_cny, reasoning_steps
+            FROM trace_metrics
+            WHERE task_id = ?
+            ORDER BY timestamp ASC
+            """,
+            (task_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def has_trace_metrics(self, task_id: str) -> bool:
+        """判断某任务是否有 metrics 数据（用于兼容旧任务）。"""
+        row = self._conn.execute(
+            "SELECT 1 FROM trace_metrics WHERE task_id = ? LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return row is not None
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         return Task(
