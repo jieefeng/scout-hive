@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { parseTaskBlueprint, confirmParse, ParseError, ParseResponse } from '../api/client';
+import { parseTaskBlueprint, confirmParse, ParseError, type ParseResponse } from '../api/client';
 
 export default function ParsePreview() {
   const [params] = useSearchParams();
