@@ -119,6 +119,11 @@ flowchart LR
 | `Claim` | claim_id, claim_text, quote, source_ref, quote_type, confidence(已弃用) | 分析结论 |
 | `AnalysisResult` | findings: [Claim] | Analyst 输出 |
 | `ReviewCheck` | check_id, criterion, passed, evidence | Reviewer 输出 |
+| `TraceMetrics` | trace_id, task_id, node_id, agent, timestamp, elapsed_ms, llm_latency_ms, tokens_in/out/total, cost_cny, reasoning_steps | 单节点 trace 指标 |
+| `TaskMetricsSnapshot` | task_id, created_at, total_elapsed_ms, node/completed/failed_count, feedback_rounds, total_tokens, total_cost_cny, llm_call_count, slow_nodes, agent_breakdown, quality, rc_missing_count | 任务级聚合 metrics |
+| `LLMPricingConfig` | pricing: dict[model, PricingTier{in_cost, out_cost}] | config.yaml LLM 定价表 |
+
+`trace_metrics` 独立表（schema migration 走 ALTER TABLE + try/except 幂等模式），`LLMPricingConfig` 在 `config.yaml` 的 `llm_pricing` 块中定义。
 
 **Schema 驱动**（`backend/app/schema/mvp_defaults.py`）：
 - `DEFAULT_SCHEMA`：定义 `groups: [{name, dimensions: [{name, keywords, output_type, evidence_threshold, tracking_sources}]}]`
@@ -168,6 +173,28 @@ flowchart LR
 
 **权衡**：并发写性能上限 ~1000 TPS。对本系统（任务级别串行）足够。生产化时需迁 Postgres。
 
+### 6.7 任务级 metrics 聚合（observability 深度）
+
+**为什么**：课题要求「决策过程与中间产物都完全透明」。节点级 TraceRecord 已有，但评委/用户无法在 UI 上一眼看到「花了多少钱/谁最慢/质量信号」。
+
+**做法**：
+- `trace_metrics` 独立表（每条 trace 同步落库），走 ALTER TABLE 幂等迁移
+- `GET /api/tasks/:id/metrics` 端点聚合（total_cost_cny / total_elapsed_ms / 慢节点 top 3 / quality）
+- 实时靠 WS 触发前端「重拉 + 5 秒节流」（不新增事件类型，保持 spec 6.3「事件类型少而稳」）
+- 旧任务无 metrics 时返 `available: false`（优雅降级，不报错）
+
+**权衡**：cost_cny 是「估算」语义（按 LLM 定价表 × 70/30 token 分配），不是真实账单；UI 标「估算」角标。
+
+### 6.8 ReasoningChain 强约束
+
+**为什么**：架构文档 § 6 旧版本「reasoning_chain 由 Agent 自填（不强制）」——违反课题「完全透明」诉求。3 个有决策的 Agent（Analyst/Writer/Reviewer）跑下来空数组概率不低。
+
+**做法**：
+- `AgentBase.enforce_rc: bool` 类属性，子类显式 override 启用
+- 启用后 `execute()` 末尾调 `_enforce_reasoning_chain(input_data, result)`：若 RC 空，hint 重试 1 次
+- 仍空则接受，trace 标 `[RC missing]`（不阻塞任务）
+- 豁免：`Collector`（机械搜索）/ `TaskParser`（结构化任务）显式 enforce_rc=False
+
 ## 7. 已知限制与不做事项
 
 按 spec（`2026-06-06-core-demo-readiness-design.md`）明确不做的：
@@ -185,4 +212,4 @@ flowchart LR
 **已识别的技术债**：
 - confidence 概念已清理（commit 5f8b121），但旧文档可能残留
 - `bash.exe.stackdump` 在 frontend/ 下（WSA 残留），可清理
-- 任何 LLM 调用都未做 cost 估算 / quota 监控（运行 3 个竞品约消耗 ~50k tokens）
+- metrics 历史趋势图、跨 provider 对比、阈值告警——未做（YAGNI）

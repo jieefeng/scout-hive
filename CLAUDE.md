@@ -43,6 +43,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 数据清洗 | trafilatura |
 | 持久化 | SQLite（StateManager 单例） |
 
+后端 `backend/config.yaml` 的 `llm_pricing` 块定义 LLM 定价表（CNY / 1k tokens），用于任务 metrics 中 `cost_cny` 估算。未知 model 走 `default` 兜底。
+
 ## 目录结构
 
 ```

@@ -48,6 +48,7 @@ flowchart LR
 - **全链路溯源**：每条结论附带 `quote` + `source_ref` + `reasoning_chain`
 - **实时可视化**：DAG 执行状态实时展示，WebSocket 推送 + 轮询兜底
 - **可插拔 LLM**：支持 Claude / 百练 DashScope / OpenAI / Ollama 本地模型
+- **可观测性**：任务跑完后，UI 的「总览」Tab 展示 3 张指标卡（成本 / 性能 / 质量），所有 trace 推理链可点开查看。详见 [docs/architecture.md](docs/architecture.md) § 6.7-6.8。
 
 ### 技术栈
 
@@ -199,6 +200,7 @@ Full diagram: [docs/architecture.md](docs/architecture.md)。
 - **Full-chain Provenance**: Every claim includes `quote` + `source_ref` + `reasoning_chain`
 - **Real-time Visualization**: Live DAG execution status with WebSocket push + polling fallback
 - **Pluggable LLM**: Supports Claude / DashScope / OpenAI / Ollama local models
+- **Observability**: After a task completes, the UI's "Overview" tab shows 3 metric cards (Cost / Performance / Quality); all trace reasoning chains are clickable for inspection. See [docs/architecture.md](docs/architecture.md) § 6.7-6.8 for details.
 
 ### Tech Stack
 
