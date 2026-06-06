@@ -75,6 +75,7 @@ class TaskParser(AgentBase):
             competitors=parsed.get("competitors", []),
             dimensions=parsed.get("dimensions", []),
             dag=DAGBlueprint(**parsed.get("dag", {})),
+            summary=parsed.get("summary", ""),
             traceability=TraceabilityConfig(),
         )
         return AgentResult(success=True, output=dag.model_dump(), llm_response=llm_response)
@@ -130,6 +131,7 @@ class TaskParser(AgentBase):
             competitors=parsed.get("competitors", []),
             dimensions=parsed.get("dimensions", []),
             dag=DAGBlueprint(**parsed.get("dag", {})),
+            summary=parsed.get("summary", ""),
             traceability=TraceabilityConfig(),
         )
         return AgentResult(success=True, output=dag.model_dump(), llm_response=llm_response)

@@ -66,4 +66,5 @@ class TaskDAG(BaseModel):
     competitors: list[str]
     dimensions: list[str]
     dag: DAGBlueprint
+    summary: str = ""
     traceability: TraceabilityConfig = Field(default_factory=TraceabilityConfig)

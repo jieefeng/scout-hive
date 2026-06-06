@@ -4,7 +4,6 @@
     POST /api/tasks/parse          → parse_task_blueprint(...)
     POST /api/tasks/parse/confirm  → DAGBlueprint(**req.blueprint) + _create_and_run
 """
-import json
 import logging
 from typing import Any
 
@@ -29,23 +28,6 @@ def _raw_content(result) -> str:
     if result.llm_response and result.llm_response.content:
         return result.llm_response.content
     return result.raw_response or ""
-
-
-def _extract_summary(raw: str) -> str:
-    """TaskDAG.model_dump() 丢掉 summary 字段，从 LLM 原文里补回。"""
-    if not raw:
-        return ""
-    s = raw.strip()
-    if s.startswith("```"):
-        lines = s.split("\n")
-        s = "\n".join(lines[1:-1]) if len(lines) >= 2 else s.lstrip("`")
-    try:
-        parsed = json.loads(s)
-    except json.JSONDecodeError:
-        return ""
-    if isinstance(parsed, dict):
-        return parsed.get("summary", "") or ""
-    return ""
 
 
 def _classify_error(result) -> str:
@@ -120,6 +102,6 @@ async def parse_task_blueprint(
         "blueprint": parsed["dag"],
         "competitors": competitors,
         "dimensions": dimensions,
-        "summary": _extract_summary(_raw_content(result)),
+        "summary": parsed.get("summary", ""),
         "raw_response": raw_truncated,
     }
