@@ -9,7 +9,7 @@ def test_ensure_metrics_table_idempotent():
     # ignore_cleanup_errors=True: Windows 平台 SQLite 连接未关时无法 unlink
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         path = os.path.join(d, "tasks.db")
-        sm = StateManager(db_path=path, reset=True)
+        sm = StateManager(db_path=path)
         # 多次调用应幂等
         sm._ensure_metrics_table()
         sm._ensure_metrics_table()  # 不应抛异常
@@ -30,7 +30,7 @@ def test_save_and_query_trace_metrics():
     from app.models.metrics import TraceMetrics
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         path = os.path.join(d, "tasks.db")
-        sm = StateManager(db_path=path, reset=True)
+        sm = StateManager(db_path=path)
 
         # 插入 3 条
         for i, (agent, elapsed, tokens) in enumerate([
