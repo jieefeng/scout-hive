@@ -321,7 +321,10 @@ export default function TaskDetail() {
               </button>
             </div>
             <div style={{ overflow: 'auto', flex: 1 }}>
-              <AgentDetail trace={selectedTrace} nodeId={selectedNodeId} />
+              <AgentDetail
+                trace={selectedTrace}
+                nodeId={selectedNodeId}
+              />
             </div>
           </div>
         </>

@@ -12,12 +12,8 @@ class Reviewer(AgentBase):
 检查维度：
 1. JSON 格式：报告 HTML 是否完整
 2. 溯源完整性：每条结论是否有 source_ref 和 quote
-3. 置信度校准：置信度是否与证据强度匹配
 
 规则：
-- 2+ 条独立来源 → 可评 high (≥0.8)
-- 仅 1 条来源 → 最高 medium (≤0.7)
-- paraphrased quote → 置信度权重 ×0.7
 - 无来源 → 直接退回
 
 输出 JSON 格式：
@@ -60,14 +56,11 @@ class Reviewer(AgentBase):
             feedback_to=parsed.get("feedback_to", ""),
             feedback_message=parsed.get("feedback_message", ""),
         )
-        pass_count = sum(1 for c in parsed.get("checks", []) if c.get("status") == "pass")
-        total = len(parsed.get("checks", [])) or 1
-        confidence = {"score": pass_count / total, "level": "high" if pass_count == total else "medium"}
         reasoning_chain = [
             {"step": i + 1, "thought": f"检查 {c.get('dimension', '未知')} — {c.get('status', '未知')}"}
             for i, c in enumerate(parsed.get("checks", []))
         ]
         return AgentResult(
             success=True, output=review.model_dump(), llm_response=llm_response,
-            reasoning_chain=reasoning_chain, confidence=confidence,
+            reasoning_chain=reasoning_chain,
         )

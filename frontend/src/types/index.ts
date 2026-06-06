@@ -16,6 +16,7 @@ export interface TaskSummary {
   report_html: string;
   traces: TraceRecord[];
   reviews: ReviewResult[];
+  error_message?: string;
 }
 
 export interface TraceRecord {
@@ -27,8 +28,9 @@ export interface TraceRecord {
   output: Record<string, unknown>;
   reasoning_chain: ReasoningStep[];
   sources: TraceSource[];
-  confidence: { score: number; level: string };
   llm_metadata: { model: string; tokens_used: number; latency_ms: number };
+  revision_round?: number;
+  error_message?: string;
 }
 
 export interface ReasoningStep {
@@ -41,6 +43,7 @@ export interface TraceSource {
   source_id: string;
   type: string;
   url: string;
+  title?: string;    // 网页标题
   snippet: string;
 }
 

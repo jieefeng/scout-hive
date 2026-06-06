@@ -12,12 +12,11 @@ class Writer(AgentBase):
 要求：
 1. 报告必须是完整的 HTML 片段（不需要 <html> 和 <head>）
 2. 每条结论附带溯源浮窗（data-finding-id 属性）
-3. 置信度用进度条展示
-4. 对比矩阵用表格展示
-5. **必须输出 Markdown 表格**：第一列是维度名，其余列是竞品
-6. 所有竞品必须使用完全相同的行维度，没有数据的单元格填"无"
-7. 禁止行列错位
-8. 禁止输出任何段落叙述格式，只允许表格
+3. 对比矩阵用表格展示
+4. **必须输出 Markdown 表格**：第一列是维度名，其余列是竞品
+5. 所有竞品必须使用完全相同的行维度，没有数据的单元格填"无"
+6. 禁止行列错位
+7. 禁止输出任何段落叙述格式，只允许表格
 
 [来源引用规则 - 严格遵守]
 - 输入数据中的 "sources" 数组包含真实 URL，格式为 [{"source_id": "...", "url": "https://...", "snippet": "..."}]
@@ -39,9 +38,8 @@ class Writer(AgentBase):
 要求：
 1. 报告必须是完整的 HTML 片段（不需要 <html> 和 <head>）
 2. 每条结论附带溯源浮窗（data-finding-id 属性）
-3. 置信度用进度条展示
-4. 输出段落叙述，结构为 [竞品名]：[分析结论]
-5. 只允许段落叙述，禁止任何表格格式
+3. 输出段落叙述，结构为 [竞品名]：[分析结论]
+4. 只允许段落叙述，禁止任何表格格式
 
 [来源引用规则 - 严格遵守]
 - 输入数据中的 "sources" 数组包含真实 URL，格式为 [{"source_id": "...", "url": "https://...", "snippet": "..."}]
@@ -94,5 +92,4 @@ class Writer(AgentBase):
         return AgentResult(
             success=True, output=parsed, llm_response=llm_response,
             sources=collector_sources,
-            confidence={"score": 0.8, "level": "high"},
         )

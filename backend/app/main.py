@@ -15,7 +15,7 @@ from app.agents.collector import Collector
 from app.agents.analyst import Analyst
 from app.agents.writer import Writer
 from app.agents.reviewer import Reviewer
-from app.api import tasks, websocket
+from app.api import tasks, websocket, parse as parse_api
 
 
 def create_app() -> FastAPI:
@@ -56,8 +56,10 @@ def create_app() -> FastAPI:
 
     tasks.init_router(state_manager, orchestrator, event_bus)
     websocket.init_router(event_bus)
+    parse_api.init_router(state_manager, orchestrator, event_bus)
     app.include_router(tasks.router)
     app.include_router(websocket.router)
+    app.include_router(parse_api.router)
 
     @app.get("/health")
     async def health():

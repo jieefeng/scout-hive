@@ -47,7 +47,7 @@ COLLECTOR_FIXTURE = MockBailianAdapter(
 )
 
 ANALYST_FIXTURE = MockBailianAdapter(
-    '{"competitor": "抖音", "dimension": "推荐算法", "findings": [{"finding_id": "f001", "claim": "抖音使用深度学习推荐", "quote": "deep learning recommendation engine", "quote_type": "exact", "source_ref": "src001", "chunk_ref": "c001", "reasoning_chain": [{"step": 1, "thought": "官网描述"}], "confidence": {"score": 0.9, "level": "high"}}], "comparison_matrix": {"dimensions": ["推荐算法"], "competitors": {"抖音": {"推荐算法": {"status": "Y", "detail": "深度学习"}}}}}'
+    '{"competitor": "抖音", "dimension": "推荐算法", "findings": [{"finding_id": "f001", "claim": "抖音使用深度学习推荐", "quote": "deep learning recommendation engine", "quote_type": "exact", "source_ref": "src001", "chunk_ref": "c001", "reasoning_chain": [{"step": 1, "thought": "官网描述"}]}], "comparison_matrix": {"dimensions": ["推荐算法"], "competitors": {"抖音": {"推荐算法": {"status": "Y", "detail": "深度学习"}}}}}'
 )
 
 WRITER_FIXTURE = MockBailianAdapter(

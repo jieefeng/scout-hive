@@ -109,7 +109,6 @@ async def test_execute_mvp_full_flow_single_competitor():
                     "source_ref": "src001",
                     "chunk_ref": "chunk001",
                     "reasoning_chain": [],
-                    "confidence": {"score": 0.9, "level": "high", "uncertainty_factors": []},
                 }
             ],
             "comparison_matrix": {"dimensions": [], "competitors": {}},

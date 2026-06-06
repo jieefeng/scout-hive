@@ -35,3 +35,58 @@ export function connectWebSocket(onEvent: (event: unknown) => void) {
   ws.onmessage = (msg) => { onEvent(JSON.parse(msg.data)); };
   return ws;
 }
+
+export interface ParseResponse {
+  blueprint: { nodes: any[]; edges: any[]; feedback_edges?: any[] };
+  competitors: string[];
+  dimensions: string[];
+  summary: string;
+}
+
+export interface ParseConfirmResponse {
+  task_id: string;
+  status: string;
+  // 其他字段由后端 TaskResponse 决定，TS 端不强校验
+  [key: string]: unknown;
+}
+
+export class ParseError extends Error {
+  status: number;
+  detail: {
+    error_type: string;
+    raw_response?: string;
+    hint?: string;
+    error_message?: string;
+  };
+  constructor(status: number, detail: any) {
+    super(detail?.error_type ?? `HTTP ${status}`);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export async function parseTaskBlueprint(message: string) {
+  const resp = await fetch(`${API_BASE}/api/tasks/parse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new ParseError(resp.status, detail?.detail ?? { error_type: 'unknown' });
+  }
+  return resp.json();
+}
+
+export async function confirmParse(blueprint: object) {
+  const resp = await fetch(`${API_BASE}/api/tasks/parse/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blueprint }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error(`confirm failed: ${resp.status} ${JSON.stringify(detail)}`);
+  }
+  return resp.json();
+}

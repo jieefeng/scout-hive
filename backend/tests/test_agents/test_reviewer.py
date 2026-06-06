@@ -52,14 +52,17 @@ async def test_reviewer_invalid_json(mock_llm):
 
 
 @pytest.mark.asyncio
-async def test_reviewer_checks_confidence_calibration(mock_llm):
+async def test_reviewer_no_confidence_dimension(mock_llm):
+    """Reviewer 输出 checks 不含"置信度校准"维度。"""
     reviewer = Reviewer("Reviewer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"verdict": "approved", "checks": [{"dimension": "置信度校准", "status": "pass", "issues": []}, {"dimension": "溯源完整性", "status": "pass", "issues": []}], "feedback_to": "", "feedback_message": ""}',
+        content='{"verdict": "approved", "checks": [{"dimension": "溯源完整性", "status": "pass", "issues": []}, {"dimension": "JSON 格式", "status": "pass", "issues": []}], "feedback_to": "", "feedback_message": ""}',
         model="test",
     )
 
-    result = await reviewer.run({"report_html": "<div>报告</div>", "findings": [{"confidence": {"score": 0.9}}]})
+    result = await reviewer.run({"report_html": "<div>报告</div>", "findings": []})
 
     assert result.success is True
-    assert len(result.output["checks"]) == 2
+    dimensions = [c["dimension"] for c in result.output["checks"]]
+    assert "置信度校准" not in dimensions
+    assert "confidence" not in str(result.output).lower()

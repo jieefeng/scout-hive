@@ -19,7 +19,6 @@ class AgentResult(BaseModel):
     llm_response: LLMResponse | None = None
     reasoning_chain: list[dict] = Field(default_factory=list)
     sources: list[dict] = Field(default_factory=list)
-    confidence: dict = Field(default_factory=dict)
 
 
 class AgentBase(ABC):
@@ -50,9 +49,9 @@ class AgentBase(ABC):
             result.output,
             elapsed,
             llm_response=result.llm_response,
+            error=result.error_message if not result.success else None,
             reasoning_chain=result.reasoning_chain,
             sources=result.sources,
-            confidence=result.confidence,
         )
         return result
 
@@ -80,7 +79,6 @@ class AgentBase(ABC):
         error: str | None = None,
         reasoning_chain: list[dict] | None = None,
         sources: list[dict] | None = None,
-        confidence: dict | None = None,
     ) -> TraceRecord:
         llm_meta = LLMMetadata()
         if llm_response:
@@ -98,8 +96,8 @@ class AgentBase(ABC):
             output=output,
             reasoning_chain=reasoning_chain or [],
             sources=sources or [],
-            confidence=confidence or {},
             llm_metadata=llm_meta,
+            error_message=error or "",
         )
 
     @staticmethod

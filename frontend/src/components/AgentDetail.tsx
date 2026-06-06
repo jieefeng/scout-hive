@@ -31,45 +31,8 @@ function getTheme(agent: string) {
   return AGENT_THEME[expandAgentName(agent)] || defaultTheme;
 }
 
-/* ── Confidence ring ── */
-function ConfidenceRing({ score, level, accent }: { score: number; level: string; accent: string }) {
-  const pct = Math.round(score * 100);
-  const r = 32;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
-  const levelColor = level === 'high' ? '#22c55e' : level === 'medium' ? '#f59e0b' : '#ef4444';
-  const levelLabel = level === 'high' ? '高' : level === 'medium' ? '中' : '低';
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-      <svg width="80" height="80" viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={r} fill="none" stroke="#e2e8f0" strokeWidth="6" />
-        <circle
-          cx="40" cy="40" r={r} fill="none"
-          stroke={levelColor} strokeWidth="6" strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          transform="rotate(-90 40 40)"
-          style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-        />
-        <text x="40" y="36" textAnchor="middle" fontSize="16" fontWeight="700" fill="#1e293b">
-          {pct}%
-        </text>
-        <text x="40" y="52" textAnchor="middle" fontSize="10" fill="#94a3b8">
-          置信度
-        </text>
-      </svg>
-      <span style={{
-        fontSize: '0.75rem', fontWeight: 600, color: levelColor,
-        background: levelColor + '18', padding: '2px 10px', borderRadius: '10px',
-      }}>
-        {levelLabel}
-      </span>
-    </div>
-  );
-}
-
 /* ── Metric card ── */
-function MetricCard({ icon, label, value, accent }: { icon: string; label: string; value: string; accent: string }) {
+function MetricCard({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div style={{
       flex: 1, padding: '14px 16px', borderRadius: '12px',
@@ -297,7 +260,6 @@ export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
   }
 
   const theme = getTheme(trace.agent);
-  const confidence = trace.confidence || { score: 0, level: 'unknown' };
   const meta = trace.llm_metadata || { model: '-', tokens_used: 0, latency_ms: 0 };
   const hasReasoning = trace.reasoning_chain && trace.reasoning_chain.length > 0;
   const hasSources = trace.sources && trace.sources.length > 0;
@@ -348,8 +310,29 @@ export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
             {trace.node_id}
           </h3>
         </div>
-        <ConfidenceRing score={confidence.score} level={confidence.level} accent={theme.accent} />
       </div>
+
+      {/* ── Error banner (failed nodes) ── */}
+      {trace.error_message && (
+        <div style={{
+          margin: '16px 24px 0', padding: '14px 18px', borderRadius: '12px',
+          background: '#fef2f2', border: '1px solid #fecaca',
+          display: 'flex', alignItems: 'flex-start', gap: '12px',
+        }}>
+          <span style={{ fontSize: '1.2rem', flexShrink: 0, marginTop: '1px' }}>❌</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b', marginBottom: '4px' }}>
+              执行失败
+            </div>
+            <div style={{
+              fontSize: '0.82rem', color: '#b91c1c', lineHeight: 1.5,
+              wordBreak: 'break-word',
+            }}>
+              {trace.error_message}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Metrics strip ── */}
       <div style={{
@@ -357,9 +340,9 @@ export default function AgentDetail({ trace, nodeId }: AgentDetailProps) {
         background: 'linear-gradient(180deg, #f8fafc, #f1f5f9)',
         borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap',
       }}>
-        <MetricCard icon="🤖" label="模型" value={meta.model || '-'} accent={theme.accent} />
-        <MetricCard icon="🪙" label="Token" value={meta.tokens_used ? meta.tokens_used.toLocaleString() : '-'} accent={theme.accent} />
-        <MetricCard icon="⏱️" label="耗时" value={meta.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : '-'} accent={theme.accent} />
+        <MetricCard icon="🤖" label="模型" value={meta.model || '-'} />
+        <MetricCard icon="🪙" label="Token" value={meta.tokens_used ? meta.tokens_used.toLocaleString() : '-'} />
+        <MetricCard icon="⏱️" label="耗时" value={meta.latency_ms ? `${(meta.latency_ms / 1000).toFixed(1)}s` : '-'} />
       </div>
 
       {/* ── Tab bar ── */}

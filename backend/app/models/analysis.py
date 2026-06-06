@@ -1,29 +1,16 @@
-from typing import Literal
-
-from pydantic import BaseModel, Field
-
-
-class Confidence(BaseModel):
-    score: float = Field(default=0.0, ge=0.0, le=1.0)
-    level: Literal["high", "medium", "low"] = "medium"
-    uncertainty_factors: list[str] = Field(default_factory=list)
-
-
-class ReasoningStep(BaseModel):
-    step: int
-    thought: str
-    source_ref: str | None = None
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Finding(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     finding_id: str
     claim: str
     quote: str = ""
     quote_type: str = "exact"
     source_ref: str = ""
     chunk_ref: str = ""
-    reasoning_chain: list[ReasoningStep] = Field(default_factory=list)
-    confidence: Confidence = Field(default_factory=Confidence)
+    reasoning_chain: list[dict] = Field(default_factory=list)
 
 
 class CompetitorStatus(BaseModel):

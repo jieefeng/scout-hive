@@ -38,20 +38,6 @@ async def test_writer_invalid_json(mock_llm):
 
 
 @pytest.mark.asyncio
-async def test_writer_includes_confidence_bar(mock_llm):
-    writer = Writer("Writer", mock_llm)
-    mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<div><div data-confidence=\\"0.9\\">高质量结论</div></div>", "summary": "x"}',
-        model="test",
-    )
-
-    result = await writer.run({"findings": [{"confidence": {"score": 0.9}}]})
-
-    assert result.success is True
-    assert "confidence" in result.output["report_html"] or "0.9" in result.output["report_html"]
-
-
-@pytest.mark.asyncio
 async def test_writer_passes_findings_to_llm(mock_llm):
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(

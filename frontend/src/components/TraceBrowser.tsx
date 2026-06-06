@@ -14,12 +14,119 @@ function expandAgentName(name: string): string {
   return AGENT_FULL_NAME[name] || name;
 }
 
+function isCollectorAgent(agent: string): boolean {
+  return expandAgentName(agent) === 'Collector';
+}
+
 const AGENT_THEME: Record<string, { color: string; bg: string; icon: string }> = {
   Collector: { color: '#3b82f6', bg: '#eff6ff', icon: '🔍' },
   Analyst:   { color: '#8b5cf6', bg: '#f5f3ff', icon: '📊' },
   Writer:    { color: '#10b981', bg: '#ecfdf5', icon: '✍️' },
   Reviewer:  { color: '#f59e0b', bg: '#fffbeb', icon: '🔎' },
 };
+
+function CollectorStrategyCard({ trace }: { trace: TraceRecord }) {
+  const strategy = trace.reasoning_chain?.find((s: any) => s.type === 'strategy');
+  if (!strategy) return null;
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <h4 style={{
+        margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 700,
+        color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
+      }}>
+        <span style={{
+          width: '4px', height: '16px', borderRadius: '2px',
+          background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+        }} />
+        搜索策略
+      </h4>
+      <div style={{
+        padding: '14px 16px', background: '#eff6ff', borderRadius: '10px',
+        border: '1px solid #bfdbfe', fontSize: '0.85rem', lineHeight: 1.8,
+        color: '#1e40af', whiteSpace: 'pre-wrap',
+      }}>
+        {strategy.thought}
+      </div>
+    </div>
+  );
+}
+
+function CollectorSourcesList({ trace }: { trace: TraceRecord }) {
+  if (!trace.sources?.length) return null;
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <h4 style={{
+        margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 700,
+        color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
+      }}>
+        <span style={{
+          width: '4px', height: '16px', borderRadius: '2px',
+          background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+        }} />
+        采集结果 ({trace.sources.length})
+      </h4>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {trace.sources.map((source, i) => (
+          <div key={source.source_id || i} style={{
+            padding: '14px 16px', background: '#f8fafc', borderRadius: '10px',
+            border: '1px solid #e2e8f0',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.85rem' }}>🌐</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>
+                {source.title || (() => { try { return new URL(source.url || 'https://unknown').hostname; } catch { return '未知来源'; } })()}
+              </span>
+            </div>
+            {source.url && (
+              <a href={source.url} target="_blank" rel="noopener noreferrer" style={{
+                fontSize: '0.78rem', color: '#3b82f6', textDecoration: 'none',
+                display: 'block', marginBottom: '8px', wordBreak: 'break-all',
+                marginLeft: '28px',
+              }}>
+                {source.url} ↗
+              </a>
+            )}
+            {source.snippet && (
+              <p style={{
+                margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.5,
+                background: '#fff', padding: '8px 10px', borderRadius: '6px',
+                border: '1px solid #e2e8f0', marginLeft: '28px',
+              }}>
+                {source.snippet}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CollectorSummaryCard({ trace }: { trace: TraceRecord }) {
+  const summary = trace.reasoning_chain?.find((s: any) => s.type === 'summary');
+  if (!summary) return null;
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <h4 style={{
+        margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 700,
+        color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
+      }}>
+        <span style={{
+          width: '4px', height: '16px', borderRadius: '2px',
+          background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+        }} />
+        采集统计
+      </h4>
+      <div style={{
+        padding: '14px 16px', background: '#f0f9ff', borderRadius: '10px',
+        border: '1px solid #bae6fd', fontSize: '0.85rem', lineHeight: 1.8,
+        color: '#0c4a6e', whiteSpace: 'pre-wrap',
+      }}>
+        {summary.thought}
+      </div>
+    </div>
+  );
+}
 
 export default function TraceBrowser({ traces }: TraceBrowserProps) {
   const [selectedTrace, setSelectedTrace] = useState<TraceRecord | null>(null);
@@ -119,88 +226,72 @@ export default function TraceBrowser({ traces }: TraceBrowserProps) {
             })()}
           </div>
 
-          <div style={{ marginBottom: '24px' }}>
-            <h4 style={{
-              margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 700,
-              color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
-            }}>
-              <span style={{
-                width: '4px', height: '16px', borderRadius: '2px',
-                background: 'linear-gradient(180deg, #8b5cf6, #7c3aed)',
-              }} />
-              推理链
-            </h4>
-            {selectedTrace.reasoning_chain?.length ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {selectedTrace.reasoning_chain.map((step, i) => {
-                  const theme = AGENT_THEME[expandAgentName(selectedTrace.agent)] || { color: '#64748b' };
-                  return (
-                    <div key={i} style={{
-                      padding: '14px 16px', background: '#f8fafc', borderRadius: '10px',
-                      border: '1px solid #e2e8f0', fontSize: '0.85rem', lineHeight: 1.6,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{
-                          width: '22px', height: '22px', borderRadius: '50%',
-                          background: theme.color, color: '#fff', fontSize: '0.65rem',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 700, flexShrink: 0,
-                        }}>
-                          {step.step}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>步骤 {step.step}</span>
-                      </div>
-                      <p style={{ margin: 0, color: '#334155' }}>{step.thought}</p>
-                      {step.source_ref && (
-                        <button
-                          onClick={() => setShowSourcePanel(true)}
-                          style={{
-                            marginTop: '8px', fontSize: '0.75rem', color: theme.color,
-                            cursor: 'pointer', background: theme.color + '12', border: 'none',
-                            padding: '4px 10px', borderRadius: '6px', fontWeight: 500,
-                          }}
-                        >
-                          📎 查看原文
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{
-                padding: '1.5rem', textAlign: 'center', color: '#94a3b8',
-                background: '#f8fafc', borderRadius: '10px', border: '1px dashed #e2e8f0',
-                fontSize: '0.85rem',
+          {isCollectorAgent(selectedTrace.agent) ? (
+            <>
+              <CollectorStrategyCard trace={selectedTrace} />
+              <CollectorSourcesList trace={selectedTrace} />
+              <CollectorSummaryCard trace={selectedTrace} />
+            </>
+          ) : (
+            <div style={{ marginBottom: '24px' }}>
+              <h4 style={{
+                margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 700,
+                color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px',
               }}>
-                暂无推理记录
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{
-              flex: '1 1 200px', padding: '16px', borderRadius: '12px',
-              background: '#fff', border: '1px solid #e2e8f0',
-            }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>置信度</h4>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ flex: 1, height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${(selectedTrace.confidence?.score || 0) * 100}%`,
-                    background: selectedTrace.confidence?.level === 'high'
-                      ? 'linear-gradient(90deg, #22c55e, #16a34a)'
-                      : selectedTrace.confidence?.level === 'medium'
-                        ? 'linear-gradient(90deg, #f59e0b, #d97706)'
-                        : 'linear-gradient(90deg, #ef4444, #dc2626)',
-                    height: '100%', borderRadius: '4px', transition: 'width 0.5s ease',
-                  }} />
+                <span style={{
+                  width: '4px', height: '16px', borderRadius: '2px',
+                  background: 'linear-gradient(180deg, #8b5cf6, #7c3aed)',
+                }} />
+                推理链
+              </h4>
+              {selectedTrace.reasoning_chain?.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {selectedTrace.reasoning_chain.map((step, i) => {
+                    const theme = AGENT_THEME[expandAgentName(selectedTrace.agent)] || { color: '#64748b' };
+                    return (
+                      <div key={i} style={{
+                        padding: '14px 16px', background: '#f8fafc', borderRadius: '10px',
+                        border: '1px solid #e2e8f0', fontSize: '0.85rem', lineHeight: 1.6,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                          <span style={{
+                            width: '22px', height: '22px', borderRadius: '50%',
+                            background: theme.color, color: '#fff', fontSize: '0.65rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 700, flexShrink: 0,
+                          }}>
+                            {step.step}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>步骤 {step.step}</span>
+                        </div>
+                        <p style={{ margin: 0, color: '#334155' }}>{step.thought}</p>
+                        {step.source_ref && (
+                          <button
+                            onClick={() => setShowSourcePanel(true)}
+                            style={{
+                              marginTop: '8px', fontSize: '0.75rem', color: theme.color,
+                              cursor: 'pointer', background: theme.color + '12', border: 'none',
+                              padding: '4px 10px', borderRadius: '6px', fontWeight: 500,
+                            }}
+                          >
+                            📎 查看原文
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', minWidth: '40px', textAlign: 'right' }}>
-                  {Math.round((selectedTrace.confidence?.score || 0) * 100)}%
-                </span>
-              </div>
+              ) : (
+                <div style={{
+                  padding: '1.5rem', textAlign: 'center', color: '#94a3b8',
+                  background: '#f8fafc', borderRadius: '10px', border: '1px dashed #e2e8f0',
+                  fontSize: '0.85rem',
+                }}>
+                  暂无推理记录
+                </div>
+              )}
             </div>
+          )}
 
             <div style={{
               flex: '1 1 200px', padding: '16px', borderRadius: '12px',

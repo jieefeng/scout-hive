@@ -11,7 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Orchestrator**（心脏）：纯代码调度引擎，按拓扑序执行 DAG，管理反馈循环
 - **手脚**：Collector / Analyst / Writer / Reviewer，各司其职
 
-当前 MVP 路径：`POST /api/tasks` 绕过 TaskParser，直接从竞品列表 + 默认 Schema 程序化构建 DAG，顺序执行节点。
+当前两条入口：`POST /api/tasks`（结构化，硬编码 `_build_dag`）与 `POST /api/tasks/parse`（自然语言，TaskParser 生成 DAG 蓝图后用户确认再 `POST /api/tasks/parse/confirm` 启动执行）。详见下文"两条入口"。
+
+## 两条入口：自然语言 vs 结构化
+
+`POST /api/tasks` 走硬编码 `_build_dag`（**结构化入口**），适合调试与已有竞品清单的场景。`POST /api/tasks/parse` 走 TaskParser（**自然语言入口**），让用户用一句话描述需求，AI 调研组长生成 DAG 蓝图、用户在前端确认后 `POST /api/tasks/parse/confirm` 启动执行。
+
+约束：parse 路径的维度强制在 `DEFAULT_SCHEMA` 内；解析失败时**不降级**到结构化入口，直接返 422 + `error_type` + `raw_response`。
 
 ## 绝对不能做的事
 
@@ -32,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|
 | 后端 | Python + FastAPI + Pydantic v2 |
 | 前端 | React 19 + TypeScript (strict) + React Flow v12 + Zustand v5 |
-| LLM | 可插拔适配层（Claude / 百练 DashScope / OpenAI / Ollama），当前默认百练 qwen3.6-flash |
+| LLM | 可插拔适配层（Claude / 百练 DashScope / OpenAI / Ollama），当前默认百练 qwen3.6-flash-2026-04-16 |
 | 实时通信 | WebSocket + EventBus 内存发布订阅 |
 | 数据清洗 | trafilatura |
 | 持久化 | SQLite（StateManager 单例） |

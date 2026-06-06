@@ -59,7 +59,6 @@ class DAGBlueprint(BaseModel):
 class TraceabilityConfig(BaseModel):
     level: Literal["full", "summary", "none"] = "full"
     include_reasoning: bool = True
-    include_confidence: bool = True
 
 
 class TaskDAG(BaseModel):
@@ -67,4 +66,5 @@ class TaskDAG(BaseModel):
     competitors: list[str]
     dimensions: list[str]
     dag: DAGBlueprint
+    summary: str = ""
     traceability: TraceabilityConfig = Field(default_factory=TraceabilityConfig)

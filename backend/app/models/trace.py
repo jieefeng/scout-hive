@@ -5,6 +5,7 @@ class TraceSource(BaseModel):
     source_id: str
     type: str  # web | api | document
     url: str = ""
+    title: str = ""       # 网页标题
     snippet: str = ""
     fetched_at: str | None = None
 
@@ -24,6 +25,6 @@ class TraceRecord(BaseModel):
     output: dict = Field(default_factory=dict)
     reasoning_chain: list[dict] = Field(default_factory=list)
     sources: list[TraceSource] = Field(default_factory=list)
-    confidence: dict = Field(default_factory=dict)
     llm_metadata: LLMMetadata = Field(default_factory=LLMMetadata)
     revision_round: int = 0  # 反馈迭代轮次，0=初始，1+=反馈循环
+    error_message: str = ""  # 节点级错误信息（失败时填充）
