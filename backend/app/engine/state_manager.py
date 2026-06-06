@@ -241,6 +241,53 @@ class StateManager:
             )
             self._touch(task_id)
             self._conn.commit()
+            self._maybe_persist_trace_metrics(task_id, trace)
+
+    # trace_metrics 自动落盘（add_trace 钩子）——
+    # 完整 TraceRecord dump 同步写 metrics；非完整 dict（timeout/revision 等无 trace_id）跳过。
+    _cached_pricing = None
+
+    def _get_pricing(self):
+        """延迟加载 + 缓存 LLMPricingConfig（避免每个 trace 都读 yaml）。"""
+        if self._cached_pricing is None:
+            from app.config import load_config
+            self._cached_pricing = load_config().llm_pricing
+        return self._cached_pricing
+
+    def _maybe_persist_trace_metrics(self, task_id: str, trace: dict) -> None:
+        """从 trace dict 抽取字段、构造 TraceMetrics 并落盘。无 trace_id 则跳过。"""
+        trace_id = trace.get("trace_id")
+        if not trace_id:
+            return  # 非完整 trace（timeout dict / revision dict）—— 跳过
+        from app.models.metrics import TraceMetrics
+
+        llm = trace.get("llm_metadata") or {}
+        model = llm.get("model", "") or ""
+        tokens_total = int(llm.get("tokens_used", 0) or 0)
+        tokens_in = int(tokens_total * 0.7)
+        tokens_out = tokens_total - tokens_in
+        llm_latency = int(llm.get("latency_ms", 0) or 0)
+
+        try:
+            cost = self._get_pricing().cost_cny(model, tokens_in, tokens_out)
+        except Exception:
+            cost = 0.0  # 缺 yaml / 解析失败都不影响主流程
+
+        metrics = TraceMetrics(
+            trace_id=trace_id,
+            task_id=task_id,
+            node_id=trace.get("node_id", "") or "",
+            agent=trace.get("agent", "") or "",
+            timestamp=trace.get("timestamp", "") or "",
+            elapsed_ms=llm_latency,  # 简化：暂用 LLM latency 兜底（缺真实节点计时）
+            llm_latency_ms=llm_latency,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            tokens_total=tokens_total,
+            cost_cny=round(cost, 6),
+            reasoning_steps=len(trace.get("reasoning_chain") or []),
+        )
+        self.save_trace_metrics(metrics)
 
     def add_review(self, task_id: str, review: dict):
         row = self._conn.execute("SELECT reviews FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
