@@ -46,7 +46,7 @@ def get_task_metrics(task_id: str):
             "node_id": r["node_id"],
             "agent": r["agent"],
             "elapsed_ms": r["elapsed_ms"],
-            "cost_cny": r["cost_cny"],
+            "cost_cny": round(r["cost_cny"], 4),
         }
         for r in slow
     ]
@@ -59,7 +59,7 @@ def get_task_metrics(task_id: str):
             by_agent[a] = {"count": 0, "tokens": 0, "cost_cny": 0.0, "elapsed_ms": 0}
         by_agent[a]["count"] += 1
         by_agent[a]["tokens"] += r["tokens_total"]
-        by_agent[a]["cost_cny"] += r["cost_cny"]
+        by_agent[a]["cost_cny"] = round(by_agent[a]["cost_cny"] + r["cost_cny"], 4)
         by_agent[a]["elapsed_ms"] += r["elapsed_ms"]
 
     # node_states 里 completed/failed 计数
