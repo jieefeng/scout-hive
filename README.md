@@ -23,6 +23,22 @@ Scout Hive 是一个多 Agent 协作系统，模拟数字调研小组，自动�
 - **Orchestrator（心脏）**：纯代码调度引擎，按拓扑序执行 DAG，管理反馈循环
 - **Collector / Analyst / Writer / Reviewer（手脚）**：AI + 工具，各司其职
 
+### 系统架构
+
+```mermaid
+flowchart LR
+    User[用户] -->|自然语言| ParseAPI[POST /parse]
+    User -->|结构化| TasksAPI[POST /tasks]
+    ParseAPI & TasksAPI --> Orch[Orchestrator]
+    Orch --> Agent5[5 Agents<br/>TaskParser/Collector/<br/>Analyst/Writer/Reviewer]
+    Agent5 --> LLM[LLM Registry]
+    Collector --> AS[AnySearch]
+    Orch --> SM[(SQLite)]
+    Orch -->|WebSocket| FE[前端]
+```
+
+完整架构图见 [docs/architecture.md](docs/architecture.md)。
+
 ### 功能特性
 
 - **智能信息采集**：通过 AnySearch API 搜索公开信息，自动清洗和结构化
@@ -157,6 +173,22 @@ Scout Hive is a multi-agent collaboration system that simulates a digital resear
 - **TaskParser (Brain)**: AI-driven, converses with users and outputs DAG execution blueprints
 - **Orchestrator (Heart)**: Pure code scheduling engine, executes DAGs in topological order, manages feedback loops
 - **Collector / Analyst / Writer / Reviewer (Hands)**: AI + tools, each with dedicated responsibilities
+
+### Architecture
+
+```mermaid
+flowchart LR
+    User -->|NLP| ParseAPI[POST /parse]
+    User -->|Structured| TasksAPI[POST /tasks]
+    ParseAPI & TasksAPI --> Orch[Orchestrator]
+    Orch --> Agent5[5 Agents<br/>TaskParser/Collector/<br/>Analyst/Writer/Reviewer]
+    Agent5 --> LLM[LLM Registry]
+    Collector --> AS[AnySearch]
+    Orch --> SM[(SQLite)]
+    Orch -->|WebSocket| FE[Frontend]
+```
+
+Full diagram: [docs/architecture.md](docs/architecture.md)。
 
 ### Features
 
