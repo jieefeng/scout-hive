@@ -131,6 +131,34 @@ async def run_one(competitor: str, run_dir: Path) -> dict:
         }
 
 
+async def run_demo(competitors: list[str], concurrency: int) -> list[dict]:
+    """并发跑所有竞品，限制并发数。
+
+    Returns:
+        结果列表，每项为 {competitor, status, ...}，失败项含 error 字段。
+    """
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = OUTPUT_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    sem = asyncio.Semaphore(concurrency)
+
+    async def bound(c: str) -> dict:
+        async with sem:
+            try:
+                return await run_one(c, run_dir)
+            except Exception as e:
+                return {"competitor": c, "status": "failed", "error": str(e)}
+
+    results = await asyncio.gather(*[bound(c) for c in competitors])
+    summary_path = run_dir / "summary.json"
+    summary_path.write_text(
+        json.dumps(results, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"\n汇总写入 {summary_path}")
+    return results
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="真实 LLM 端到端 demo")
     p.add_argument("--competitors", default=",".join(DEFAULT_COMPETITORS),
@@ -144,17 +172,16 @@ def main() -> int:
     competitors = [c.strip() for c in args.competitors.split(",") if c.strip()]
     if not check_env():
         return 1
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = OUTPUT_DIR / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\n=== 跑 1 个竞品（{competitors[0]}）===")
-    try:
-        result = asyncio.run(run_one(competitors[0], run_dir))
-    except Exception as e:
-        print(f"✗ {e}")
-        return 1
-    print(f"\n✓ 成功：report={result['report']}, trace={result['trace']}")
-    return 0
+    print(f"\n=== 跑 {len(competitors)} 个竞品，并发 {args.concurrency} ===")
+    results = asyncio.run(run_demo(competitors, args.concurrency))
+    failed = [r for r in results if r.get("status") != "completed"]
+    print(f"\n=== 结果：成功 {len(results) - len(failed)}/{len(results)} ===")
+    for r in results:
+        if r.get("status") == "completed":
+            print(f"  ✓ {r['competitor']}: {r.get('report')}")
+        else:
+            print(f"  ✗ {r['competitor']}: {r.get('error')}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
