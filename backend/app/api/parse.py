@@ -4,13 +4,17 @@
     POST /api/tasks/parse          → parse_task_blueprint(...)
     POST /api/tasks/parse/confirm  → DAGBlueprint(**req.blueprint) + _create_and_run
 """
+import asyncio
 import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.task_parser import TaskParser
+from app.models.dag import DAGBlueprint
+from app.models.task import Competitor, TaskStatus
 from app.schema.mvp_defaults import load_default_schema
 
 logger = logging.getLogger(__name__)
@@ -117,12 +121,16 @@ router = APIRouter(prefix="/api/tasks", tags=["parse"])
 
 # 模块级单例，由 init_router 注入
 _orch = None  # type: ignore[var-annotated]
+_sm = None    # type: ignore[var-annotated]
+_bus = None   # type: ignore[var-annotated]
 
 
-def init_router(orch):
+def init_router(orch, sm, bus):
     """main.create_app 启动时调用。"""
-    global _orch
+    global _orch, _sm, _bus
     _orch = orch
+    _sm = sm
+    _bus = bus
 
 
 class ParseRequest(BaseModel):
@@ -171,3 +179,60 @@ async def parse_task(req: ParseRequest):
         dimensions=result["dimensions"],
         summary=result["summary"],
     )
+
+
+class ParseConfirmRequest(BaseModel):
+    blueprint: dict
+
+
+@router.post("/parse/confirm")
+async def confirm_parse(req: ParseConfirmRequest):
+    """二次校验 blueprint + 创建 task + 启动 execute_mvp。"""
+    if not req.blueprint or "nodes" not in req.blueprint:
+        raise HTTPException(
+            status_code=422,
+            detail={"error_type": "blueprint_tampered", "error_message": "blueprint 缺少 nodes"},
+        )
+    try:
+        DAGBlueprint(**req.blueprint)
+    except (ValueError, ValidationError) as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"error_type": "blueprint_tampered", "error_message": str(e)},
+        )
+
+    task_id = str(uuid.uuid4())
+    competitors = sorted({
+        n["params"].get("target", "")
+        for n in req.blueprint["nodes"]
+        if n.get("params", {}).get("target")
+    })
+    dimensions = sorted({
+        n["params"].get("dimension", "")
+        for n in req.blueprint["nodes"]
+        if n.get("params", {}).get("dimension")
+    })
+
+    task = _sm.create_task(
+        task_id,
+        [Competitor(name=c, website="") for c in competitors],
+        dimensions,
+        req.blueprint,
+    )
+    _sm.update_task_status(task_id, TaskStatus.PENDING)
+    task.progress = _sm.calculate_progress(task)
+
+    async def run_dag():
+        try:
+            await _orch.execute_mvp(
+                task_id,
+                DAGBlueprint(**req.blueprint),
+                [{"name": c, "domain": ""} for c in competitors],
+            )
+        except Exception as e:
+            logger.exception("Confirm task %s failed: %s", task_id, e)
+            _sm.set_error_message(task_id, str(e))
+            _sm.update_task_status(task_id, TaskStatus.FAILED)
+
+    asyncio.create_task(run_dag())
+    return task
