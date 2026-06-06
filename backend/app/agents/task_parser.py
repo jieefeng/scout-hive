@@ -99,29 +99,29 @@ class TaskParser(AgentBase):
         ]
         logger.info(f"TaskParser retrying LLM with {len(messages)} messages")
         llm_response = await self.chat(messages)
-        content = llm_response.content.strip() if llm_response.content else ""
+        content = llm_response.content.strip()
         if content.startswith("```"):
             lines = content.split("\n")
             content = "\n".join(lines[1:-1]) if len(lines) >= 2 else content.lstrip("`")
+        if not content:
+            return AgentResult(
+                success=False,
+                raw_response=llm_response.content,
+                json_valid=False,
+                error_type="llm_empty",
+                error_message="LLM returned empty content",
+                llm_response=llm_response,
+            )
         try:
-            parsed = json.loads(content) if content else None
+            parsed = json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"TaskParser retry JSON parse error: {e}")
             return AgentResult(
                 success=False,
-                raw_response=llm_response.content or "",
+                raw_response=llm_response.content,
                 json_valid=False,
                 error_type="json_parse",
                 error_message=str(e),
-                llm_response=llm_response,
-            )
-        if parsed is None:
-            return AgentResult(
-                success=False,
-                raw_response=llm_response.content or "",
-                json_valid=False,
-                error_type="llm_empty",
-                error_message="LLM returned empty content",
                 llm_response=llm_response,
             )
         task_id = str(uuid.uuid4())

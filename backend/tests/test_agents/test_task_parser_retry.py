@@ -66,3 +66,18 @@ async def test_retry_with_prompt_hint_propagates_failure(mock_llm):
     assert result.success is False
     assert result.error_type == "json_parse"
     assert result.raw_response == "still not json"
+
+
+@pytest.mark.asyncio
+async def test_retry_with_prompt_hint_returns_llm_empty_on_empty_content(mock_llm):
+    """retry 时 LLM 返回空内容 → result.error_type=llm_empty。"""
+    mock_llm.chat.return_value = LLMResponse(content="", model="test")
+    parser = TaskParser("TaskParser", mock_llm)
+
+    result = await parser.retry_with_prompt_hint(
+        {"message": "x"}, error_hint="bad json"
+    )
+
+    assert result.success is False
+    assert result.error_type == "llm_empty"
+    assert result.error_message
