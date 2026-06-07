@@ -66,18 +66,18 @@ async def test_parse_retries_on_json_parse():
 
 
 @pytest.mark.asyncio
-async def test_parse_does_not_retry_on_dim_not_in_schema():
-    """第 1 轮返回合法 JSON 但维度不在 schema → 不重试。"""
+async def test_parse_accepts_arbitrary_dim():
+    """任意 dimension（含 schema 没收录的）都应通过 parse 校验。"""
     parser = _parser_with_llm(AsyncMock(return_value=LLMResponse(
-        content='{"competitors": ["A"], "dimensions": ["不存在的维度"], "dag": ' + str(VALID_DAG).replace("'", '"') + '}',
+        content='{"competitors": ["A"], "dimensions": ["协同能力"], "dag": ' + str(VALID_DAG).replace("'", '"') + ', "summary": "OK"}',
         model="test",
     )))
 
     result = await parse_task_blueprint("x", parser, _schema())
 
-    assert result["success"] is False
-    assert result["error_type"] == "dim_not_in_schema"
-    assert parser.llm.chat.call_count == 1  # 关键：没重试
+    assert result["success"] is True
+    assert result["dimensions"] == ["协同能力"]
+    assert parser.llm.chat.call_count == 1  # 一次成功，无需重试
 
 
 @pytest.mark.asyncio
@@ -139,3 +139,24 @@ async def test_parse_topology_error():
 def test_retryable_errors_set():
     """RETRYABLE_ERRORS 仅含 json_parse 和 llm_empty。"""
     assert RETRYABLE_ERRORS == {"json_parse", "llm_empty"}
+
+
+@pytest.mark.asyncio
+async def test_full_raw_response_in_failure():
+    """422 响应 raw_response 应包含完整 LLM JSON（不截断到 RAW_RESPONSE_MAX_LEN=200）。"""
+    long_raw = (
+        '{"competitors": [], "long": "' + ("x" * 500) + '", "dag": '
+        + str(VALID_DAG).replace("'", '"')
+        + ', "summary": "OK"}'
+    )
+    parser = _parser_with_llm(AsyncMock(return_value=LLMResponse(
+        content=long_raw,
+        model="test",
+    )))
+
+    result = await parse_task_blueprint("x", parser, _schema())
+
+    assert result["success"] is False
+    assert result["error_type"] == "empty_competitors"
+    # 完整 raw_response 应 > 500 字符（如果被截断到 200 字符就 fail）
+    assert len(result["raw_response"]) > 500

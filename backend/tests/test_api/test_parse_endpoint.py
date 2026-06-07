@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 from app.main import create_app
 
@@ -118,12 +119,12 @@ async def test_parse_endpoint_returns_422_with_hint_on_json_parse(app):
     assert detail["error_type"] == "json_parse"
     assert "raw_response" in detail
     assert "hint" in detail
-    assert "POST /api/tasks" in detail["hint"]
+    assert "LLM 输出不是合法 JSON" in detail["hint"]
 
 
 @pytest.mark.asyncio
-async def test_parse_endpoint_dim_not_in_schema(app):
-    """维度不在 DEFAULT_SCHEMA → 422 dim_not_in_schema，不重试。"""
+async def test_parse_endpoint_accepts_arbitrary_dim(app):
+    """任意 dimension（含 schema 没收录的）都应通过 parse 校验，返回 200。"""
     with patch("app.api.parse._orch") as mock_orch:
         mock_parser = MagicMock()
         mock_parser.run = AsyncMock()
@@ -134,14 +135,40 @@ async def test_parse_endpoint_dim_not_in_schema(app):
             success=True,
             output={
                 "competitors": ["A"],
-                "dimensions": ["unknown_dim"],
+                "dimensions": ["协同能力"],
                 "dag": VALID_BLUEPRINT,
+                "summary": "OK",
             },
         )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/tasks/parse", json={"message": "x"})
+            resp = await client.post("/api/tasks/parse", json={"message": "对比飞书钉钉企微的协同能力"})
 
-    assert resp.status_code == 422
-    assert resp.json()["detail"]["error_type"] == "dim_not_in_schema"
-    mock_parser.retry_with_prompt_hint.assert_not_called()  # 关键：没重试
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["dimensions"] == ["协同能力"]
+    assert "blueprint" in data
+
+
+@pytest.fixture
+def client():
+    from app.main import create_app
+    return TestClient(create_app())
+
+
+def test_parse_hint_by_error_type_empty_competitors(client):
+    """empty_competitors 错误码 → 特定 hint 文案。"""
+    with patch("app.api.parse._orch") as mock_orch:
+        mock_parser = AsyncMock()
+        mock_orch.agents = {"TaskParser": mock_parser}
+        with patch("app.api.parse.parse_task_blueprint", new=AsyncMock(return_value={
+            "success": False,
+            "error_type": "empty_competitors",
+            "raw_response": "",
+            "error_message": "competitors list is empty",
+        })):
+            resp = client.post("/api/tasks/parse", json={"message": "对比一些竞品"})
+            assert resp.status_code == 422
+            body = resp.json()["detail"]
+            assert body["error_type"] == "empty_competitors"
+            assert "请明确列出至少 1 个竞品名" in body["hint"]

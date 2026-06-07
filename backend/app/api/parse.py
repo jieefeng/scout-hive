@@ -24,11 +24,6 @@ RETRYABLE_ERRORS = {"json_parse", "llm_empty"}
 
 MAX_COMPETITORS = 10
 MESSAGE_MAX_LEN = 2000
-RAW_RESPONSE_MAX_LEN = 200
-
-
-def _all_dim_names(schema: dict) -> set[str]:
-    return {d["name"] for g in schema.get("groups", []) for d in g.get("dimensions", [])}
 
 
 def _raw_content(result) -> str:
@@ -66,13 +61,13 @@ async def parse_task_blueprint(
             error_hint=result.error_message or "输出格式有误",
         )
 
-    raw_truncated = _raw_content(result)[:RAW_RESPONSE_MAX_LEN]
+    raw_response_full = _raw_content(result)
 
     if not result.success:
         return {
             "success": False,
             "error_type": _classify_error(result),
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
             "error_message": result.error_message or "",
         }
 
@@ -80,29 +75,18 @@ async def parse_task_blueprint(
     competitors = parsed.get("competitors", [])
     dimensions = parsed.get("dimensions", [])
 
-    # 严格短路：dim 必须在 schema 内
-    allowed = _all_dim_names(schema)
-    for dim in dimensions:
-        if dim not in allowed:
-            return {
-                "success": False,
-                "error_type": "dim_not_in_schema",
-                "raw_response": raw_truncated,
-                "error_message": f"维度 '{dim}' 不在 DEFAULT_SCHEMA 内",
-            }
-
     # 竞品数校验
     if not competitors:
         return {
             "success": False,
             "error_type": "empty_competitors",
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
         }
     if len(competitors) > MAX_COMPETITORS:
         return {
             "success": False,
             "error_type": "too_many_competitors",
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
         }
 
     return {
@@ -111,7 +95,7 @@ async def parse_task_blueprint(
         "competitors": competitors,
         "dimensions": dimensions,
         "summary": parsed.get("summary", ""),
-        "raw_response": raw_truncated,
+        "raw_response": raw_response_full,
     }
 
 
@@ -144,6 +128,13 @@ class ParseResponse(BaseModel):
     summary: str = ""
 
 
+HINT_BY_ERROR: dict[str, str] = {
+    "empty_competitors": "请明确列出至少 1 个竞品名",
+    "too_many_competitors": f"竞品数超过上限 {MAX_COMPETITORS}，请精简",
+    "json_parse": "LLM 输出不是合法 JSON，请稍后重试或换种描述方式",
+    "topology_error": "LLM 生成的 DAG 结构有误，请稍后重试",
+}
+
 HINT_FALLBACK = "请重写需求使其更具体，或使用 POST /api/tasks 直接提交结构化数据"
 
 
@@ -169,7 +160,7 @@ async def parse_task(req: ParseRequest):
                 "error_type": result["error_type"],
                 "raw_response": result.get("raw_response", ""),
                 "error_message": result.get("error_message", ""),
-                "hint": HINT_FALLBACK,
+                "hint": HINT_BY_ERROR.get(result["error_type"], HINT_FALLBACK),
             },
         )
 
