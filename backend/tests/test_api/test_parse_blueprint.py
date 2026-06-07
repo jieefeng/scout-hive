@@ -139,3 +139,24 @@ async def test_parse_topology_error():
 def test_retryable_errors_set():
     """RETRYABLE_ERRORS 仅含 json_parse 和 llm_empty。"""
     assert RETRYABLE_ERRORS == {"json_parse", "llm_empty"}
+
+
+@pytest.mark.asyncio
+async def test_full_raw_response_in_failure():
+    """422 响应 raw_response 应包含完整 LLM JSON（不截断到 RAW_RESPONSE_MAX_LEN=200）。"""
+    long_raw = (
+        '{"competitors": [], "long": "' + ("x" * 500) + '", "dag": '
+        + str(VALID_DAG).replace("'", '"')
+        + ', "summary": "OK"}'
+    )
+    parser = _parser_with_llm(AsyncMock(return_value=LLMResponse(
+        content=long_raw,
+        model="test",
+    )))
+
+    result = await parse_task_blueprint("x", parser, _schema())
+
+    assert result["success"] is False
+    assert result["error_type"] == "empty_competitors"
+    # 完整 raw_response 应 > 500 字符（如果被截断到 200 字符就 fail）
+    assert len(result["raw_response"]) > 500
