@@ -6,23 +6,23 @@ from app.schema.mvp_defaults import (
 
 def test_load_default_schema():
     schema = load_default_schema()
-    # 委托给 loader.load_active_schema()，默认从 config.yaml 读 active_schema_id = "general"
-    assert schema.schema_id == "general"
+    # 委托给 loader.load_active_schema()，默认从 config.yaml 读 active_schema_id = "ai-assistant"
+    assert schema.schema_id == "ai-assistant"
     assert len(schema.groups) >= 1
 
 def test_default_groups_have_dimensions():
     schema = load_default_schema()
-    product_group = next(g for g in schema.groups if g.name == "产品功能")
+    product_group = next(g for g in schema.groups if g.name == "产品能力")
     assert len(product_group.dimensions) >= 2
 
 def test_dimension_schema_fields():
     schema = load_default_schema()
     dim = schema.groups[0].dimensions[0]
-    assert dim.name == "功能对比"
+    assert dim.name == "核心玩法"
     assert dim.output_type in ["table", "paragraph", "battlecard"]
     assert len(dim.keywords) >= 1
     assert dim.evidence_threshold >= 1
-    assert dim.tracking_sources == ["web"]
+    assert dim.tracking_sources == ["web", "social"]
 
 def test_output_type_enum():
     t = DimensionSchema(

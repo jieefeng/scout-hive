@@ -99,7 +99,7 @@ async def test_execute_mvp_full_flow_single_competitor():
         success=True,
         output={
             "competitor": "竞品A",
-            "dimension": "功能对比",
+            "dimension": "核心玩法",
             "findings": [
                 {
                     "finding_id": "f001",
@@ -119,7 +119,7 @@ async def test_execute_mvp_full_flow_single_competitor():
     mock_writer = MagicMock()
     mock_writer.execute = AsyncMock(return_value=AgentResult(
         success=True,
-        output={"report_html": "<p>竞品A 功能对比 报告内容</p>", "summary": "测试报告"},
+        output={"report_html": "<p>竞品A 核心玩法 报告内容</p>", "summary": "测试报告"},
     ))
     mock_writer._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
@@ -131,9 +131,9 @@ async def test_execute_mvp_full_flow_single_competitor():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_flow_001"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="feishu.cn")], ["功能对比"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="feishu.cn")], ["核心玩法"], {})
 
-    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "feishu.cn"}], dimensions=["功能对比"])
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "feishu.cn"}], dimensions=["核心玩法"])
     await orch.execute_mvp(
         task_id,
         blueprint,
@@ -145,26 +145,26 @@ async def test_execute_mvp_full_flow_single_competitor():
 
     # Verify report was generated
     assert "竞品A" in sm.get_task(task_id).report_html
-    assert "功能对比" in sm.get_task(task_id).report_html
+    assert "核心玩法" in sm.get_task(task_id).report_html
 
     # Verify Collector was called with domain and keywords from DEFAULT_SCHEMA
     collector_call = mock_collector.execute.call_args[0][0]
     assert collector_call["target"] == "竞品A"
     assert collector_call["domain"] == "feishu.cn"
-    assert collector_call["keywords"] == ["功能", "特性", "支持"]
-    assert collector_call["evidence_threshold"] == 2  # 功能对比 evidence_threshold in DEFAULT_SCHEMA
+    assert collector_call["keywords"] == ["聊天", "角色", "语音", "多模态", "对话", "玩法"]
+    assert collector_call["evidence_threshold"] == 2  # 核心玩法 evidence_threshold in DEFAULT_SCHEMA
 
     # Verify Analyst was called with evidence_threshold
     analyst_call = mock_analyst.execute.call_args[0][0]
     assert analyst_call["competitor"] == "竞品A"
-    assert analyst_call["dimension"] == "功能对比"
+    assert analyst_call["dimension"] == "核心玩法"
     assert analyst_call["evidence_threshold"] == 2
 
     # Verify Writer was called with output_type and description
     writer_call = mock_writer.execute.call_args[0][0]
     assert writer_call["competitor"] == "竞品A"
-    assert writer_call["dimension"] == "功能对比"
-    assert writer_call["output_type"] == "table"
+    assert writer_call["dimension"] == "核心玩法"
+    assert writer_call["output_type"] == "paragraph"
     assert writer_call["description"] != ""
 
 
@@ -315,11 +315,11 @@ async def test_execute_mvp_loads_default_schema_dim_config():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_schema_001"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比", "用户体验", "定价策略"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["核心玩法", "AI 模型能力", "商业模式"], {})
 
     blueprint = _build_mvp_blueprint(
         competitors=[{"name": "竞品A", "domain": "test.com"}],
-        dimensions=["功能对比", "用户体验", "定价策略"],
+        dimensions=["核心玩法", "AI 模型能力", "商业模式"],
     )
     await orch.execute_mvp(
         task_id,
@@ -331,32 +331,32 @@ async def test_execute_mvp_loads_default_schema_dim_config():
     calls = mock_collector.execute.call_args_list
     call_params = [c[0][0] for c in calls]
 
-    # 功能对比: keywords=["功能", "特性", "支持"], min_sources=2, output_type=table
-    func_call = next(c for c in call_params if c["dimension"] == "功能对比")
-    assert func_call["keywords"] == ["功能", "特性", "支持"]
+    # 核心玩法: keywords=["聊天", "角色", "语音", "多模态", "对话", "玩法"], min_sources=2, output_type=paragraph
+    func_call = next(c for c in call_params if c["dimension"] == "核心玩法")
+    assert func_call["keywords"] == ["聊天", "角色", "语音", "多模态", "对话", "玩法"]
     assert func_call["evidence_threshold"] == 2
 
-    # 用户体验: keywords=["用户体验", "UI", "界面"], evidence_threshold=1, output_type=paragraph
-    ux_call = next(c for c in call_params if c["dimension"] == "用户体验")
-    assert ux_call["keywords"] == ["用户体验", "UI", "界面"]
-    assert ux_call["evidence_threshold"] == 1
+    # AI 模型能力: keywords=["模型", "上下文", "token", "多模态", "响应速度", "MoE"], evidence_threshold=2, output_type=table
+    model_call = next(c for c in call_params if c["dimension"] == "AI 模型能力")
+    assert model_call["keywords"] == ["模型", "上下文", "token", "多模态", "响应速度", "MoE"]
+    assert model_call["evidence_threshold"] == 2
 
-    # 定价策略: keywords=["定价", "价格", "套餐", "收费"], evidence_threshold=1, output_type=table
-    price_call = next(c for c in call_params if c["dimension"] == "定价策略")
-    assert price_call["keywords"] == ["定价", "价格", "套餐", "收费"]
+    # 商业模式: keywords=["订阅", "会员", "免费", "配额", "价格", "企业版", "B 端"], evidence_threshold=1, output_type=table
+    price_call = next(c for c in call_params if c["dimension"] == "商业模式")
+    assert price_call["keywords"] == ["订阅", "会员", "免费", "配额", "价格", "企业版", "B 端"]
     assert price_call["evidence_threshold"] == 1
 
     # Verify Writer calls have correct output_type per dimension
     writer_calls = mock_writer.execute.call_args_list
     writer_params = [c[0][0] for c in writer_calls]
 
-    func_write = next(c for c in writer_params if c["dimension"] == "功能对比")
-    assert func_write["output_type"] == "table"
+    func_write = next(c for c in writer_params if c["dimension"] == "核心玩法")
+    assert func_write["output_type"] == "paragraph"
 
-    ux_write = next(c for c in writer_params if c["dimension"] == "用户体验")
-    assert ux_write["output_type"] == "paragraph"
+    model_write = next(c for c in writer_params if c["dimension"] == "AI 模型能力")
+    assert model_write["output_type"] == "table"
 
-    price_write = next(c for c in writer_params if c["dimension"] == "定价策略")
+    price_write = next(c for c in writer_params if c["dimension"] == "商业模式")
     assert price_write["output_type"] == "table"
 
 
@@ -395,9 +395,9 @@ async def test_execute_mvp_collector_injects_domain():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_domain_001"
-    sm.create_task(task_id, [Competitor(name="飞书", domain="feishu.cn")], ["功能对比"], {})
+    sm.create_task(task_id, [Competitor(name="飞书", domain="feishu.cn")], ["核心玩法"], {})
 
-    blueprint = _build_mvp_blueprint(competitors=[{"name": "飞书", "domain": "feishu.cn"}], dimensions=["功能对比"])
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "飞书", "domain": "feishu.cn"}], dimensions=["核心玩法"])
     await orch.execute_mvp(
         task_id,
         blueprint,
@@ -443,9 +443,9 @@ async def test_execute_mvp_analyst_injects_evidence_threshold():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_evidence_threshold_001"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["核心玩法"], {})
 
-    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "test.com"}], dimensions=["功能对比"])
+    blueprint = _build_mvp_blueprint(competitors=[{"name": "竞品A", "domain": "test.com"}], dimensions=["核心玩法"])
     await orch.execute_mvp(
         task_id,
         blueprint,
@@ -453,7 +453,7 @@ async def test_execute_mvp_analyst_injects_evidence_threshold():
     )
 
     analyst_call = mock_analyst.execute.call_args[0][0]
-    assert analyst_call["evidence_threshold"] == 2  # from 功能对比 in DEFAULT_SCHEMA
+    assert analyst_call["evidence_threshold"] == 2  # from 核心玩法 in DEFAULT_SCHEMA
 
 
 @pytest.mark.asyncio
@@ -491,11 +491,11 @@ async def test_execute_mvp_writer_injects_output_type():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_output_type_001"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["功能对比", "用户体验"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="test.com")], ["核心玩法", "AI 模型能力"], {})
 
     blueprint = _build_mvp_blueprint(
         competitors=[{"name": "竞品A", "domain": "test.com"}],
-        dimensions=["功能对比", "用户体验"],
+        dimensions=["核心玩法", "AI 模型能力"],
     )
     await orch.execute_mvp(
         task_id,
@@ -506,8 +506,8 @@ async def test_execute_mvp_writer_injects_output_type():
     writer_calls = mock_writer.execute.call_args_list
     params_by_dim = {c[0][0]["dimension"]: c[0][0] for c in writer_calls}
 
-    assert params_by_dim["功能对比"]["output_type"] == "table"
-    assert params_by_dim["用户体验"]["output_type"] == "paragraph"
+    assert params_by_dim["核心玩法"]["output_type"] == "paragraph"
+    assert params_by_dim["AI 模型能力"]["output_type"] == "table"
 
 
 @pytest.mark.asyncio

@@ -23,21 +23,21 @@ def _make_mvp_blueprint():
                 id="collect_001",
                 agent="Collector",
                 action="search",
-                params={"competitor": "竞品A", "dimension": "功能对比", "domain": "产品"},
+                params={"competitor": "竞品A", "dimension": "核心玩法", "domain": "产品"},
                 depends_on=[],
             ),
             DAGNode(
                 id="analyze_001",
                 agent="Analyst",
                 action="analyze",
-                params={"competitor": "竞品A", "dimension": "功能对比"},
+                params={"competitor": "竞品A", "dimension": "核心玩法"},
                 depends_on=["collect_001"],
             ),
             DAGNode(
                 id="write_001",
                 agent="Writer",
                 action="write",
-                params={"competitor": "竞品A", "dimension": "功能对比"},
+                params={"competitor": "竞品A", "dimension": "核心玩法"},
                 depends_on=["analyze_001"],
             ),
         ],
@@ -89,7 +89,7 @@ async def test_execute_mvp_loads_default_schema():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_001"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="产品")], ["功能对比"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="产品")], ["核心玩法"], {})
 
     blueprint = _make_mvp_blueprint()
     await orch.execute_mvp(task_id, blueprint, competitors=[{"name": "竞品A", "domain": "产品"}])
@@ -97,8 +97,8 @@ async def test_execute_mvp_loads_default_schema():
     # Verify Collector was called with keywords and evidence_threshold from DEFAULT_SCHEMA
     collector_call = mock_collector.execute.call_args[0][0]
     assert "keywords" in collector_call
-    assert collector_call["keywords"] == ["功能", "特性", "支持"]
-    assert collector_call["evidence_threshold"] == 2  # from 功能对比 dimension
+    assert collector_call["keywords"] == ["聊天", "角色", "语音", "多模态", "对话", "玩法"]
+    assert collector_call["evidence_threshold"] == 2  # from 核心玩法 dimension
 
     # Verify Analyst was called with evidence_threshold
     analyst_call = mock_analyst.execute.call_args[0][0]
@@ -106,7 +106,7 @@ async def test_execute_mvp_loads_default_schema():
 
     # Verify Writer was called with output_type
     writer_call = mock_writer.execute.call_args[0][0]
-    assert writer_call["output_type"] == "table"
+    assert writer_call["output_type"] == "paragraph"
 
     # Verify task status is COMPLETED
     assert sm.get_task(task_id).status == TaskStatus.COMPLETED
