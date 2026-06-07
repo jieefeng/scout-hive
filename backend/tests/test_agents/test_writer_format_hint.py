@@ -27,7 +27,7 @@ async def test_format_hint_table_forces_table(mock_llm):
     """format_hint=table → LLM 收到的 system prompt 末尾有"强制表格"suffix。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<table><tr><td>对比</td></tr></table>", "summary": "s"}',
+        content='{"report_html": "<table><tr><td>对比</td></tr></table>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "对比分析"}]}',
         model="test",
     )
     await writer.run({"findings": [], "format_hint": "table"})
@@ -44,7 +44,7 @@ async def test_format_hint_paragraph_forces_paragraph(mock_llm):
     """format_hint=paragraph → system prompt 末尾有"强制段落"suffix。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<div><p>段落报告</p></div>", "summary": "s"}',
+        content='{"report_html": "<div><p>段落报告</p></div>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "段落叙述"}]}',
         model="test",
     )
     await writer.run({"findings": [], "format_hint": "paragraph"})
@@ -61,7 +61,7 @@ async def test_format_hint_auto_no_suffix(mock_llm):
     """format_hint=auto → system prompt 不带强制 suffix。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<div>报告</div>", "summary": "s"}',
+        content='{"report_html": "<div>报告</div>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "auto 自决"}]}',
         model="test",
     )
     await writer.run({"findings": [], "format_hint": "auto"})
@@ -78,7 +78,7 @@ async def test_format_hint_takes_precedence_over_output_type(mock_llm):
     """format_hint 与 output_type 都设时，format_hint 生效。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<table>...</table>", "summary": "s"}',
+        content='{"report_html": "<table>...</table>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "format_hint 优先"}]}',
         model="test",
     )
     # format_hint=table + output_type=paragraph（互相冲突），format_hint 应赢
@@ -96,7 +96,7 @@ async def test_output_type_backward_compatible_table(mock_llm):
     """只设 output_type=table（无 format_hint）→ 行为与改造前一致（仍走表格 suffix）。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<table><tr><td>维度</td></tr></table>", "summary": "s"}',
+        content='{"report_html": "<table><tr><td>维度</td></tr></table>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "表格报告"}]}',
         model="test",
     )
     await writer.run({"findings": [], "output_type": "table"})
@@ -112,7 +112,7 @@ async def test_output_type_backward_compatible_paragraph(mock_llm):
     """只设 output_type=paragraph（无 format_hint）→ 段落 suffix。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<div><p>段落</p></div>", "summary": "s"}',
+        content='{"report_html": "<div><p>段落</p></div>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "段落报告"}]}',
         model="test",
     )
     await writer.run({"findings": [], "output_type": "paragraph"})
@@ -128,7 +128,7 @@ async def test_default_format_hint_auto(mock_llm):
     """完全不传 format_hint 和 output_type → 默认 auto（无 suffix）。"""
     writer = Writer("Writer", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"report_html": "<div>报告</div>", "summary": "s"}',
+        content='{"report_html": "<div>报告</div>", "summary": "s", "reasoning_chain": [{"step": 1, "thought": "默认 auto"}]}',
         model="test",
     )
     await writer.run({"findings": []})

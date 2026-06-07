@@ -11,13 +11,13 @@ def test_writer_enforce_rc_true():
 
 
 def test_writer_table_prompt_mentions_reasoning_chain():
-    """Writer.SYSTEM_PROMPT_TABLE 必须显式提到 reasoning_chain 必填。"""
-    assert "reasoning_chain" in Writer.SYSTEM_PROMPT_TABLE
+    """Writer.GENERIC_PROMPT 必须显式提到 reasoning_chain 必填（向后兼容旧的 table/paragraph 检查点）。"""
+    assert "reasoning_chain" in Writer.GENERIC_PROMPT
 
 
 def test_writer_paragraph_prompt_mentions_reasoning_chain():
-    """Writer.SYSTEM_PROMPT_PARAGRAPH 必须显式提到 reasoning_chain 必填。"""
-    assert "reasoning_chain" in Writer.SYSTEM_PROMPT_PARAGRAPH
+    """Writer.GENERIC_PROMPT 必须显式提到 reasoning_chain 必填（向后兼容旧的 table/paragraph 检查点）。"""
+    assert "reasoning_chain" in Writer.GENERIC_PROMPT
 
 
 def test_writer_execute_retries_when_rc_empty():
