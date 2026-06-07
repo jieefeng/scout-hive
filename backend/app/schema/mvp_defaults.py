@@ -13,6 +13,14 @@ class DimensionSchema(BaseModel):
         default=["web"],
         description="数据来源：web / social / jobs / reviews / ads"
     )  # 新增可选字段
+    fields: list[dict] = Field(
+        default_factory=list,
+        description="维度字段定义（含 type + 质检规则），如 [{name, type, required, min}]"
+    )
+    quality_rules: list[str] = Field(
+        default_factory=list,
+        description="LLM 可读的质检规则文本，如 ['context_window 必须是数字 ≥ 8000']"
+    )
 
 class GroupSchema(BaseModel):
     name: str
