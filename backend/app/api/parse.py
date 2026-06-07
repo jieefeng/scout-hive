@@ -129,6 +129,13 @@ class ParseResponse(BaseModel):
     summary: str = ""
 
 
+HINT_BY_ERROR: dict[str, str] = {
+    "empty_competitors": "请明确列出至少 1 个竞品名",
+    "too_many_competitors": f"竞品数超过上限 {MAX_COMPETITORS}，请精简",
+    "json_parse": "LLM 输出不是合法 JSON，请稍后重试或换种描述方式",
+    "topology_error": "LLM 生成的 DAG 结构有误，请稍后重试",
+}
+
 HINT_FALLBACK = "请重写需求使其更具体，或使用 POST /api/tasks 直接提交结构化数据"
 
 
@@ -154,7 +161,7 @@ async def parse_task(req: ParseRequest):
                 "error_type": result["error_type"],
                 "raw_response": result.get("raw_response", ""),
                 "error_message": result.get("error_message", ""),
-                "hint": HINT_FALLBACK,
+                "hint": HINT_BY_ERROR.get(result["error_type"], HINT_FALLBACK),
             },
         )
 
