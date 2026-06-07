@@ -99,6 +99,49 @@ cd backend && python -m pytest path/to/test.py::name -v # 指定函数
 ### Schema 系统
 `backend/app/schema/mvp_defaults.py` 定义 `DEFAULT_SCHEMA`，包含分组和维度。每个维度有 keywords、output_type（table/paragraph）、evidence_threshold、tracking_sources。MVP 路径用它驱动 DAG 构建。
 
+## 垂直 demo 切换
+
+项目支持**多 schema 切换**——同一套 Agent 流水线（Collector / Analyst / Writer / Reviewer）跑在不同垂直赛道的 schema 上，**改 1 行 config 即可切换**。
+
+### 切换方法
+
+```bash
+# 编辑 backend/app/config.yaml
+active_schema_id: "ai-assistant"   # 当前默认
+# 可选: general | ai-assistant | collab-office
+```
+
+切换后需重启后端服务。**前端无需改**——报告渲染不耦合 schema 字段。
+
+### 现有 schema 列表
+
+| schema_id | 文件 | 维度数 | 用途 |
+|---|---|---|---|
+| `general` | `backend/app/schemas/general.json` | 3（功能对比/用户体验/定价策略） | 通用竞品分析（默认 fallback） |
+| `ai-assistant` | `backend/app/schemas/ai_assistant.json` | 7（核心玩法/AI 模型/Agent 能力/商业模式/用户社区/内容生态/安全合规） | **国内 AI 助手垂直深耕**（当前默认） |
+| `collab-office` | `backend/app/schemas/collab_office.json` | 1（占位） | 协同办公赛道（待 PR 2.4+ 完善） |
+
+### 跑 AI 助手 demo
+
+```bash
+# 1. 启动后端
+cd backend && uvicorn app.main:app --reload
+
+# 2. 跑 demo（5 竞品 × 3 维度 → 36 节点 = 15 collect + 15 analyze + 3 write + 3 review，~5-8 分钟）
+python scripts/demo_ai_assistant.py
+
+# 3. 现场追问 demo（只跑 1 个维度）
+python scripts/demo_ai_assistant.py --dimensions "Agent 能力"
+```
+
+### 加新垂直 schema
+
+1. 在 `backend/app/schemas/` 下新建 `<id>.json`（schema_id 用连字符，文件名用下划线，loader 自动转换）
+2. 在 `config.yaml` 把 `active_schema_id` 改成新 ID
+3. 跑 `python scripts/demo_ai_assistant.py`（或写新 demo 脚本）
+
+详见 `docs/superpowers/specs/2026-06-07-ai-assistant-vertical-design.md`。
+
 ## 编码原则
 
 ### 1. 编码前思考
