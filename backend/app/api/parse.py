@@ -27,10 +27,6 @@ MESSAGE_MAX_LEN = 2000
 RAW_RESPONSE_MAX_LEN = 200
 
 
-def _all_dim_names(schema: dict) -> set[str]:
-    return {d["name"] for g in schema.get("groups", []) for d in g.get("dimensions", [])}
-
-
 def _raw_content(result) -> str:
     """优先取 llm_response.content（execute 异常路径不会设 raw_response）。"""
     if result.llm_response and result.llm_response.content:
@@ -79,17 +75,6 @@ async def parse_task_blueprint(
     parsed = result.output
     competitors = parsed.get("competitors", [])
     dimensions = parsed.get("dimensions", [])
-
-    # 严格短路：dim 必须在 schema 内
-    allowed = _all_dim_names(schema)
-    for dim in dimensions:
-        if dim not in allowed:
-            return {
-                "success": False,
-                "error_type": "dim_not_in_schema",
-                "raw_response": raw_truncated,
-                "error_message": f"维度 '{dim}' 不在 DEFAULT_SCHEMA 内",
-            }
 
     # 竞品数校验
     if not competitors:
