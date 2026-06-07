@@ -80,9 +80,10 @@ DEFAULT_SCHEMA: dict = {
 }
 
 def load_default_schema() -> SchemaDefinition:
-    """Load the default MVP schema definition.
+    """向后兼容入口：delegate 到 loader.load_active_schema()。
 
-    Raises:
-        ValidationError: If the default schema data is invalid.
+    默认从 config.yaml 读 active_schema_id（默认 'general'）。
+    现有调用方（如 _load_dimensions / parse_task / execute_mvp）零改动。
     """
-    return SchemaDefinition.model_validate(DEFAULT_SCHEMA)
+    from app.schema.loader import load_active_schema
+    return load_active_schema()

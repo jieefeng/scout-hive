@@ -6,7 +6,8 @@ from app.schema.mvp_defaults import (
 
 def test_load_default_schema():
     schema = load_default_schema()
-    assert schema.schema_id == "default-mvp"
+    # 委托给 loader.load_active_schema()，默认从 config.yaml 读 active_schema_id = "general"
+    assert schema.schema_id == "general"
     assert len(schema.groups) >= 1
 
 def test_default_groups_have_dimensions():
