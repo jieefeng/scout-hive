@@ -26,10 +26,10 @@ def test_load_general_schema_explicit():
     assert "定价策略" in all_dims
 
 
-def test_load_general_schema_from_config():
-    """不传 schema_id → 从 config 读 active_schema_id（默认 'general'）。"""
+def test_load_active_schema_from_config():
+    """不传 schema_id → 从 config 读 active_schema_id（当前 'ai-assistant'）。"""
     schema = load_active_schema()
-    assert schema.schema_id == "general"
+    assert schema.schema_id == "ai-assistant"
 
 
 def test_load_nonexistent_schema_raises():

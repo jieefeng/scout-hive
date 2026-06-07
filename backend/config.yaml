@@ -1,7 +1,7 @@
 # 当前激活的 schema，对应 backend/app/schemas/<active_schema_id>.json
 # 可选: general | ai-assistant | collab-office
 # 切换后需重启服务
-active_schema_id: "general"
+active_schema_id: "ai-assistant"
 
 server:
   host: "0.0.0.0"
