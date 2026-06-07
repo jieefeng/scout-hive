@@ -47,3 +47,11 @@ def test_general_json_is_valid():
     raw = json.loads(general_path.read_text(encoding="utf-8"))
     assert "groups" in raw
     assert "schema_id" in raw
+
+
+def test_collab_office_schema_placeholder():
+    """collab_office.json 加载成功（占位状态，1 dim 1 group）。"""
+    schema = load_active_schema("collab-office")
+    assert schema.schema_id == "collab-office"
+    assert len(schema.groups) == 1
+    assert "占位" in schema.name or "placeholder" in schema.name.lower() or "占位" in schema.groups[0].name

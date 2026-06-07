@@ -1,0 +1,23 @@
+{
+  "schema_id": "collab-office",
+  "name": "协同办公赛道模板（占位，PR 2.4+ 完善）",
+  "version": "0.1",
+  "groups": [
+    {
+      "name": "占位",
+      "description": "未来 spec 完善此 schema（飞书/钉钉/企微 协同办公维度）",
+      "dimensions": [
+        {
+          "name": "占位维度",
+          "description": "待 PR 2.4+ 替换为真实维度",
+          "keywords": ["占位"],
+          "output_type": "paragraph",
+          "evidence_threshold": 1,
+          "tracking_sources": ["web"],
+          "fields": [],
+          "quality_rules": []
+        }
+      ]
+    }
+  ]
+}
