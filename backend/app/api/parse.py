@@ -62,13 +62,13 @@ async def parse_task_blueprint(
             error_hint=result.error_message or "输出格式有误",
         )
 
-    raw_truncated = _raw_content(result)[:RAW_RESPONSE_MAX_LEN]
+    raw_response_full = _raw_content(result)
 
     if not result.success:
         return {
             "success": False,
             "error_type": _classify_error(result),
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
             "error_message": result.error_message or "",
         }
 
@@ -81,13 +81,13 @@ async def parse_task_blueprint(
         return {
             "success": False,
             "error_type": "empty_competitors",
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
         }
     if len(competitors) > MAX_COMPETITORS:
         return {
             "success": False,
             "error_type": "too_many_competitors",
-            "raw_response": raw_truncated,
+            "raw_response": raw_response_full,
         }
 
     return {
@@ -96,7 +96,7 @@ async def parse_task_blueprint(
         "competitors": competitors,
         "dimensions": dimensions,
         "summary": parsed.get("summary", ""),
-        "raw_response": raw_truncated,
+        "raw_response": raw_response_full,
     }
 
 
