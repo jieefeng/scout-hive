@@ -1,0 +1,145 @@
+{
+  "schema_id": "ai-assistant",
+  "name": "国内 AI 助手横评模板",
+  "version": "1.0",
+  "groups": [
+    {
+      "name": "产品能力",
+      "description": "AI 助手的核心玩法与底层 AI 能力",
+      "dimensions": [
+        {
+          "name": "核心玩法",
+          "description": "对话形式、角色扮演、多模态输入方式。区分该竞品区别于其他家的核心亮点。",
+          "keywords": ["聊天", "角色", "语音", "多模态", "对话", "玩法"],
+          "output_type": "paragraph",
+          "evidence_threshold": 2,
+          "tracking_sources": ["web", "social"],
+          "fields": [
+            {"name": "core_mechanics", "type": "string", "required": true},
+            {"name": "differentiator", "type": "string"},
+            {"name": "use_case", "type": "string"}
+          ],
+          "quality_rules": [
+            "core_mechanics 必须提到 ≥2 种交互方式（文字/语音/图片/视频/文件），否则拒"
+          ]
+        },
+        {
+          "name": "AI 模型能力",
+          "description": "底层模型来源、上下文长度、多模态支持、响应速度。这是 2026 年 AI 助手核心差异化点。",
+          "keywords": ["模型", "上下文", "token", "多模态", "响应速度", "MoE"],
+          "output_type": "table",
+          "evidence_threshold": 2,
+          "tracking_sources": ["web"],
+          "fields": [
+            {"name": "underlying_model", "type": "string", "required": true},
+            {"name": "context_window", "type": "number", "min": 8000},
+            {"name": "multimodal_capability", "type": "list"},
+            {"name": "response_speed", "type": "number", "unit": "seconds"}
+          ],
+          "quality_rules": [
+            "context_window 必须是数字 ≥ 8000，否则标 UNVERIFIED",
+            "underlying_model 必须给出具体模型名或 '自研'/'接入'"
+          ]
+        },
+        {
+          "name": "Agent 能力",
+          "description": "任务执行、工具调用、第三方 API 集成、智能体平台规模。",
+          "keywords": ["Agent", "任务执行", "工具调用", "API", "智能体", "插件"],
+          "output_type": "table",
+          "evidence_threshold": 2,
+          "tracking_sources": ["web", "social"],
+          "fields": [
+            {"name": "tool_calling", "type": "boolean", "required": true},
+            {"name": "task_execution", "type": "string"},
+            {"name": "api_integration", "type": "boolean"},
+            {"name": "agent_marketplace", "type": "number", "description": "智能体/插件数量"}
+          ],
+          "quality_rules": [
+            "tool_calling 必须是布尔（true/false），不能是'部分支持'这类模糊词"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "商业与生态",
+      "description": "商业模式、用户社区、内容生态",
+      "dimensions": [
+        {
+          "name": "商业模式",
+          "description": "订阅模式、免费配额、会员价格、企业版方案。",
+          "keywords": ["订阅", "会员", "免费", "配额", "价格", "企业版", "B 端"],
+          "output_type": "table",
+          "evidence_threshold": 1,
+          "tracking_sources": ["web"],
+          "fields": [
+            {"name": "pricing_model", "type": "string", "required": true},
+            {"name": "free_tier", "type": "string"},
+            {"name": "paid_tier_price", "type": "number", "unit": "CNY/month"},
+            {"name": "enterprise_offering", "type": "string"}
+          ],
+          "quality_rules": [
+            "paid_tier_price 必须是数字或'无'",
+            "pricing_model 必须从 ['free', 'subscription', 'freemium', 'enterprise'] 中选"
+          ]
+        },
+        {
+          "name": "用户社区",
+          "description": "创作者数量、UGC 生态、用户口碑。",
+          "keywords": ["创作者", "UGC", "社区", "口碑", "用户评价", "分享"],
+          "output_type": "paragraph",
+          "evidence_threshold": 1,
+          "tracking_sources": ["web", "social"],
+          "fields": [
+            {"name": "community_size", "type": "string"},
+            {"name": "ugc_ecosystem", "type": "string"},
+            {"name": "user_sentiment", "type": "string", "required": true}
+          ],
+          "quality_rules": [
+            "user_sentiment 至少出现 2 个具体关键词（如'回答质量好'/'响应慢'），不能是'用户评价良好'这类空话"
+          ]
+        },
+        {
+          "name": "内容生态",
+          "description": "官方插件数量、智能体数量、小程序集成、行业覆盖。",
+          "keywords": ["插件", "智能体", "应用市场", "小程序", "行业", "生态"],
+          "output_type": "table",
+          "evidence_threshold": 1,
+          "tracking_sources": ["web"],
+          "fields": [
+            {"name": "plugin_count", "type": "number", "required": true},
+            {"name": "agent_count", "type": "number"},
+            {"name": "appstore_integrations", "type": "string"},
+            {"name": "vertical_coverage", "type": "number", "description": "覆盖行业数"}
+          ],
+          "quality_rules": [
+            "plugin_count 必须是数字"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "合规与监管",
+      "description": "内容审核、青少年模式、监管合规、数据隐私",
+      "dimensions": [
+        {
+          "name": "安全合规",
+          "description": "内容审核机制、青少年模式、大模型备案、算法备案、隐私政策。",
+          "keywords": ["审核", "青少年模式", "备案", "监管", "隐私", "合规"],
+          "output_type": "table",
+          "evidence_threshold": 1,
+          "tracking_sources": ["web"],
+          "fields": [
+            {"name": "content_moderation", "type": "string", "required": true},
+            {"name": "youth_mode", "type": "boolean", "required": true},
+            {"name": "regulatory_compliance", "type": "string", "required": true},
+            {"name": "data_privacy", "type": "string"}
+          ],
+          "quality_rules": [
+            "regulatory_compliance 必须列出具体备案号或'已备案'/'未公开'",
+            "youth_mode 必须是布尔"
+          ]
+        }
+      ]
+    }
+  ]
+}
