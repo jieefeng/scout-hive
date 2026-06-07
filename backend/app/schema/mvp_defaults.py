@@ -13,6 +13,14 @@ class DimensionSchema(BaseModel):
         default=["web"],
         description="数据来源：web / social / jobs / reviews / ads"
     )  # 新增可选字段
+    fields: list[dict] = Field(
+        default_factory=list,
+        description="维度字段定义（含 type + 质检规则），如 [{name, type, required, min}]"
+    )
+    quality_rules: list[str] = Field(
+        default_factory=list,
+        description="LLM 可读的质检规则文本，如 ['context_window 必须是数字 ≥ 8000']"
+    )
 
 class GroupSchema(BaseModel):
     name: str
@@ -25,6 +33,8 @@ class SchemaDefinition(BaseModel):
     version: str = "1.0"
     groups: list[GroupSchema] = Field(min_length=1)
 
+# DEPRECATED: 此常量已迁移到 backend/app/schemas/general.json。
+# 保留仅为向后兼容与测试用途。新代码请用 loader.load_active_schema()。
 DEFAULT_SCHEMA: dict = {
     "schema_id": "default-mvp",
     "name": "通用竞品分析模板",
@@ -70,9 +80,10 @@ DEFAULT_SCHEMA: dict = {
 }
 
 def load_default_schema() -> SchemaDefinition:
-    """Load the default MVP schema definition.
+    """向后兼容入口：delegate 到 loader.load_active_schema()。
 
-    Raises:
-        ValidationError: If the default schema data is invalid.
+    默认从 config.yaml 读 active_schema_id（默认 'general'）。
+    现有调用方（如 _load_dimensions / parse_task / execute_mvp）零改动。
     """
-    return SchemaDefinition.model_validate(DEFAULT_SCHEMA)
+    from app.schema.loader import load_active_schema
+    return load_active_schema()
