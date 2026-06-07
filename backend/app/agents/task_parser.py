@@ -41,7 +41,14 @@ class TaskParser(AgentBase):
 注意：
 - 每个竞品的每个维度都需要独立的 Collector 节点
 - DAG 中不能有环（主 edges）
-- 反馈边单独放在 feedback_edges 中"""
+- 反馈边单独放在 feedback_edges 中
+
+[format_hint 软建议 - 新增]
+- 如果生成的节点含 `Writer` agent（action: "generate_report"），建议在 `params.format_hint` 字段填：
+  - "table"（推荐：包含「对比 / 矩阵 / 定价 / 功能 / 指标」等量化词的 dimension）
+  - "paragraph"（推荐：包含「体验 / 口碑 / 感受」等定性词的 dimension）
+  - "auto"（拿不准时填这个，让 LLM 自决）
+- 不强制：Writer 拿不到 format_hint 时走 auto 路径不报错"""
 
     async def execute(self, input_data: dict) -> AgentResult:
         user_message = input_data.get("message", "")
