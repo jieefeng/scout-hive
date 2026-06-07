@@ -1,0 +1,43 @@
+# 国内 AI 助手横评 demo 配置
+# 默认跑 5 竞品 × 3 维度 = 36 节点,~5-8 分钟
+# 可用 --dimensions 参数指定只跑某些维度
+
+task:
+  name: "国内 AI 助手横评 - 2026 春季"
+  description: "豆包 vs 通义 vs Kimi vs 文小言 vs 秘塔 跨厂商 AI 助手深度对比"
+
+competitors:
+  - name: "豆包"
+    domain: "doubao.com"
+  - name: "通义千问"
+    domain: "tongyi.aliyun.com"
+  - name: "Kimi"
+    domain: "kimi.moonshot.cn"
+  - name: "文小言"
+    domain: "yiyan.baidu.com"
+  - name: "秘塔 AI 搜索"
+    domain: "metaso.cn"
+
+# 主 demo 必跑维度(3 个)
+primary_dimensions:
+  - "核心玩法"
+  - "AI 模型能力"
+  - "Agent 能力"
+
+# 现场追问 demo 备用维度(4 个)
+backup_dimensions:
+  - "商业模式"
+  - "用户社区"
+  - "内容生态"
+  - "安全合规"
+
+# 答辩用默认 message(喂给 /api/tasks/parse)
+default_message: |
+  对比分析国内 5 款 AI 助手:豆包、通义千问、Kimi、文小言、秘塔 AI 搜索。
+  重点分析每个产品的核心玩法、底层 AI 模型能力(模型、上下文、响应速度)、Agent 能力(工具调用、任务执行、智能体平台规模)。
+
+api:
+  base_url: "http://localhost:5010"
+  frontend_url: "http://localhost:5000"
+  poll_interval_seconds: 3
+  timeout_seconds: 1200  # 20 分钟上限
