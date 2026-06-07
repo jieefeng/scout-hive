@@ -33,6 +33,8 @@ class SchemaDefinition(BaseModel):
     version: str = "1.0"
     groups: list[GroupSchema] = Field(min_length=1)
 
+# DEPRECATED: 此常量已迁移到 backend/app/schemas/general.json。
+# 保留仅为向后兼容与测试用途。新代码请用 loader.load_active_schema()。
 DEFAULT_SCHEMA: dict = {
     "schema_id": "default-mvp",
     "name": "通用竞品分析模板",
