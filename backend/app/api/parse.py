@@ -24,7 +24,6 @@ RETRYABLE_ERRORS = {"json_parse", "llm_empty"}
 
 MAX_COMPETITORS = 10
 MESSAGE_MAX_LEN = 2000
-RAW_RESPONSE_MAX_LEN = 200
 
 
 def _raw_content(result) -> str:

@@ -119,12 +119,12 @@ async def test_parse_endpoint_returns_422_with_hint_on_json_parse(app):
     assert detail["error_type"] == "json_parse"
     assert "raw_response" in detail
     assert "hint" in detail
-    assert "POST /api/tasks" in detail["hint"]
+    assert "LLM 输出不是合法 JSON" in detail["hint"]
 
 
 @pytest.mark.asyncio
-async def test_parse_endpoint_dim_not_in_schema(app):
-    """维度不在 DEFAULT_SCHEMA → 422 dim_not_in_schema，不重试。"""
+async def test_parse_endpoint_accepts_arbitrary_dim(app):
+    """任意 dimension（含 schema 没收录的）都应通过 parse 校验，返回 200。"""
     with patch("app.api.parse._orch") as mock_orch:
         mock_parser = MagicMock()
         mock_parser.run = AsyncMock()
@@ -135,17 +135,19 @@ async def test_parse_endpoint_dim_not_in_schema(app):
             success=True,
             output={
                 "competitors": ["A"],
-                "dimensions": ["unknown_dim"],
+                "dimensions": ["协同能力"],
                 "dag": VALID_BLUEPRINT,
+                "summary": "OK",
             },
         )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/tasks/parse", json={"message": "x"})
+            resp = await client.post("/api/tasks/parse", json={"message": "对比飞书钉钉企微的协同能力"})
 
-    assert resp.status_code == 422
-    assert resp.json()["detail"]["error_type"] == "dim_not_in_schema"
-    mock_parser.retry_with_prompt_hint.assert_not_called()  # 关键：没重试
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["dimensions"] == ["协同能力"]
+    assert "blueprint" in data
 
 
 @pytest.fixture
