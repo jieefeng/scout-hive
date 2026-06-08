@@ -42,7 +42,7 @@ flowchart LR
 ### 功能特性
 
 - **智能信息采集**：通过 AnySearch API 搜索公开信息，自动清洗和结构化
-- **结构化竞品分析**：基于 Schema 驱动的多维度分析（功能对比、定价、市场定位等）
+- **结构化竞品分析**：硬锁定到 AI 助手赛道 7 维度(核心玩法 / AI 模型能力 / Agent 能力 / 商业模式 / 用户社区 / 内容生态 / 安全合规),Schema 驱动质检规则
 - **报告自动生成**：AI 撰写带数据溯源的竞品分析报告
 - **审查反馈循环**：Reviewer 自动审查报告质量，反馈给 Writer 迭代优化（最多 3 轮）
 - **全链路溯源**：每条结论附带 `quote` + `source_ref` + `reasoning_chain`
@@ -194,7 +194,7 @@ Full diagram: [docs/architecture.md](docs/architecture.md)。
 ### Features
 
 - **Smart Intelligence Gathering**: Search public information via AnySearch API with automatic cleaning and structuring
-- **Structured Competitive Analysis**: Schema-driven multi-dimensional analysis (feature comparison, pricing, market positioning, etc.)
+- **Structured Competitive Analysis**: Hard-locked to AI Assistant vertical with 7 dimensions (Core Mechanics / AI Model / Agent / Business / Community / Content Ecosystem / Compliance); schema-driven quality rules
 - **Automated Report Generation**: AI writes competitive analysis reports with data provenance
 - **Review Feedback Loop**: Reviewer automatically audits report quality, feeds back to Writer for iterative improvement (up to 3 rounds)
 - **Full-chain Provenance**: Every claim includes `quote` + `source_ref` + `reasoning_chain`

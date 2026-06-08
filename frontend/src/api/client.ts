@@ -102,6 +102,9 @@ export class ParseError extends Error {
     raw_response?: string;
     hint?: string;
     error_message?: string;
+    // 硬收窄(2026-06-08):后端在 error_type === 'dim_not_in_schema' 时附带这两个字段
+    invalid_dims?: string[];
+    allowed?: string[];
   };
   constructor(status: number, detail: any) {
     super(detail?.error_type ?? `HTTP ${status}`);

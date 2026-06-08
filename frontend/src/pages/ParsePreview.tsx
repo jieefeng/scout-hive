@@ -11,7 +11,13 @@ export default function ParsePreview() {
   const [loading, setLoading] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResponse | null>(null);
   const [blueprintJson, setBlueprintJson] = useState<string>('');
-  const [error, setError] = useState<{ type: string; raw?: string; hint?: string } | null>(null);
+  const [error, setError] = useState<{
+    type: string;
+    raw?: string;
+    hint?: string;
+    invalidDims?: string[];
+    allowed?: string[];
+  } | null>(null);
 
   async function handleParse() {
     setLoading(true);
@@ -27,6 +33,8 @@ export default function ParsePreview() {
           type: e.detail.error_type,
           raw: e.detail.raw_response,
           hint: e.detail.hint,
+          invalidDims: e.detail.invalid_dims,
+          allowed: e.detail.allowed,
         });
       } else {
         setError({ type: 'network', hint: String(e) });
@@ -97,6 +105,19 @@ export default function ParsePreview() {
             解析失败: {error.type}
           </div>
           {error.hint && <div style={{ marginTop: 4, color: '#7f1d1d' }}>{error.hint}</div>}
+          {error.type === 'dim_not_in_schema' && error.invalidDims && error.allowed && (
+            <div style={{ marginTop: 8, color: '#7f1d1d', fontSize: 13 }}>
+              <div>
+                <strong>不合规维度:</strong> {error.invalidDims.join('、')}
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <strong>允许的 7 项维度(请改写需求选其一):</strong>
+              </div>
+              <ul style={{ marginTop: 4, paddingLeft: 20 }}>
+                {error.allowed.map((d) => <li key={d}>{d}</li>)}
+              </ul>
+            </div>
+          )}
           {error.raw && (
             <details style={{ marginTop: 8 }}>
               <summary>查看 AI 原始输出</summary>
