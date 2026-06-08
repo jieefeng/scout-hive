@@ -1,5 +1,11 @@
 # 国内 AI 助手垂直深耕 — 设计文档
 
+> ⚠️ **DEPRECATED 2026-06-08**:本 spec 的"多 schema 共存 + 1 行 config 切换"设计已被
+> [`2026-06-08-vertical-hard-lockdown-design.md`](./2026-06-08-vertical-hard-lockdown-design.md)
+> 取代。`general.json` / `collab_office.json` / `loader.py` / `active_schema_id` 字段
+> / `load_default_schema` 兼容入口全部已删除,系统硬锁定到单 ai-assistant 路径。
+> 本文档保留作历史决策记录;**不要按本文实施新功能**。
+
 > 目标：让项目从"通用竞品分析"切换到"国内 AI 助手垂直深耕"，schema 重构 + demo 剧本重新设计
 > 目标读者：维护者 + 答辩评委（演示"垂直深耕的工程化 AI 工作流"）
 > 关联 spec：[2026-06-07-parse-flexible-dimensions-design.md](./2026-06-07-parse-flexible-dimensions-design.md)（已 commit，本 spec 是其"垂直 demo 层"）

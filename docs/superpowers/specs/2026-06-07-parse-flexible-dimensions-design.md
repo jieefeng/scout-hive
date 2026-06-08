@@ -1,5 +1,11 @@
 # Parse 端去 Schema 强制化 + 下游通用化 — 设计文档
 
+> ⚠️ **DEPRECATED 2026-06-08**:本 spec 的"parse 端接受任意 dimension"核心改动已被
+> [`2026-06-08-vertical-hard-lockdown-design.md`](./2026-06-08-vertical-hard-lockdown-design.md)
+> 反向回滚:`parse.py` 重新加 `dim_not_in_schema` 422 校验,白名单 = ai-assistant
+> 7 维度。Writer 通用 prompt + format_hint 软建议保留;parse 端的"任意维度"解锁
+> 不再适用。本文档保留作历史决策记录;**不要按本文实施新功能**。
+
 > 目标：让自然语言入口真正"自然"
 > 目标读者：维护者 + 答辩评委（演示"任意维度也能跑"）
 

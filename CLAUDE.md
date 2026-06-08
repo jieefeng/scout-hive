@@ -11,26 +11,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Orchestrator**（心脏）：纯代码调度引擎，按拓扑序执行 DAG，管理反馈循环
 - **手脚**：Collector / Analyst / Writer / Reviewer，各司其职
 
-当前两条入口：`POST /api/tasks`（结构化，硬编码 `_build_dag`）与 `POST /api/tasks/parse`（自然语言，TaskParser 生成 DAG 蓝图后用户确认再 `POST /api/tasks/parse/confirm` 启动执行）。详见下文"两条入口"。
+当前两条入口：`POST /api/tasks`（结构化，硬编码 `_build_dag`）与 `POST /api/tasks/parse`（自然语言，TaskParser 生成 DAG 蓝图后用户确认再 `POST /api/tasks/parse/confirm` 启动执行）。两条入口的维度都被硬锁定在 **ai-assistant 7 维度白名单**内,详见下文"输入入口与维度白名单"。
 
-## 两条入口：自然语言 vs 结构化
+## 输入入口与维度白名单
 
-`POST /api/tasks` 走硬编码 `_build_dag`（**结构化入口**），适合调试与已有竞品清单的场景。`POST /api/tasks/parse` 走 TaskParser（**自然语言入口**），让用户用一句话描述需求，AI 调研组长生成 DAG 蓝图、用户在前端确认后 `POST /api/tasks/parse/confirm` 启动执行。
+`POST /api/tasks` 走硬编码 `_build_dag`(**结构化入口**),自动从 `app.constants.ALLOWED_DIMENSIONS` 取全部 7 维度。`POST /api/tasks/parse` 走 TaskParser(**自然语言入口**),让用户用一句话描述需求,AI 生成 DAG 蓝图、用户确认后启动执行。
 
-约束：parse 路径的维度强制在 `DEFAULT_SCHEMA` 内；解析失败时**不降级**到结构化入口，直接返 422 + `error_type` + `raw_response`。
+约束(2026-06-08 硬收窄):**dimensions 必须全部在 `app.constants.ALLOWED_DIMENSIONS` 7 项白名单内**——
+- API 层硬校验:超出白名单的 dimensions 返 422 + `error_type=dim_not_in_schema` + `invalid_dims` + `allowed`
+- LLM 软约束:TaskParser SYSTEM_PROMPT 内联了白名单 + 映射规则,LLM 应优先把通用维度映射到白名单维度
+
+加新维度:改 `backend/app/schemas/ai_assistant.json` → 重启服务即可。详见 `docs/superpowers/specs/2026-06-08-vertical-hard-lockdown-design.md`。
 
 ## 绝对不能做的事
 
 | 红线 | 原因 |
 |------|------|
-| AnySearch 用 `/v1/extract` 端点 | 不存在，只用 `/v1/search` |
+| AnySearch 用 `/v1/extract` 端点 | 不存在,只用 `/v1/search` |
 | 取 AnySearch 结果用 `data.get("results")` | 正确路径是 `data.get("data", {}).get("results", [])` |
-| 丢掉无 `quote` + `source_ref` 的 claim | 数据溯源铁律，无引用的 claim 直接丢弃 |
-| 把 Cleaner 当 Agent | 它是基础设施中间件，不是 Agent |
+| 丢掉无 `quote` + `source_ref` 的 claim | 数据溯源铁律,无引用的 claim 直接丢弃 |
+| 把 Cleaner 当 Agent | 它是基础设施中间件,不是 Agent |
 | `print` 调试网络/编码问题 | 必须写文件验证 |
 | 连续改多处不验证 | 每步修复后立即用独立脚本验证 |
 | 直接 push 到 main | 通过 PR 合并 |
-| 硬编码端口（后端 ≠ 5010 / 前端 ≠ 5000） | `config.yaml`、`start.bat`、`api/client.ts` 已统一 |
+| 硬编码端口(后端 ≠ 5010 / 前端 ≠ 5000) | `config.yaml`、`start.bat`、`api/client.ts` 已统一 |
+| **重新引入 `general.json` 或多 schema 切换机制** | 已硬收窄到 ai-assistant 唯一;若要,先讨论是否回滚硬收窄 spec |
 
 ## 核心技术栈
 
@@ -97,50 +102,28 @@ cd backend && python -m pytest path/to/test.py::name -v # 指定函数
 - `feedback_edges` 与主 `edges` 分离，最大 3 轮循环，达到上限后 `escalation: "auto_approve"`
 
 ### Schema 系统
-`backend/app/schema/mvp_defaults.py` 定义 `DEFAULT_SCHEMA`，包含分组和维度。每个维度有 keywords、output_type（table/paragraph）、evidence_threshold、tracking_sources。MVP 路径用它驱动 DAG 构建。
+单一 schema `backend/app/schemas/ai_assistant.json`(7 维度),`app/constants.ALLOWED_DIMENSIONS` 在 import 时一次性 cache 成 frozenset,供 parse/tasks/orchestrator/task_parser 4 个消费点共用。Pydantic 模型在 `backend/app/schema/mvp_defaults.py`,唯一入口 `get_active_schema()`。每个维度有 keywords、output_type(table/paragraph)、evidence_threshold、tracking_sources、fields、quality_rules。
 
-## 垂直 demo 切换
-
-项目支持**多 schema 切换**——同一套 Agent 流水线（Collector / Analyst / Writer / Reviewer）跑在不同垂直赛道的 schema 上，**改 1 行 config 即可切换**。
-
-### 切换方法
-
-```bash
-# 编辑 backend/app/config.yaml
-active_schema_id: "ai-assistant"   # 当前默认
-# 可选: general | ai-assistant | collab-office
-```
-
-切换后需重启后端服务。**前端无需改**——报告渲染不耦合 schema 字段。
-
-### 现有 schema 列表
-
-| schema_id | 文件 | 维度数 | 用途 |
-|---|---|---|---|
-| `general` | `backend/app/schemas/general.json` | 3（功能对比/用户体验/定价策略） | 通用竞品分析（默认 fallback） |
-| `ai-assistant` | `backend/app/schemas/ai_assistant.json` | 7（核心玩法/AI 模型/Agent 能力/商业模式/用户社区/内容生态/安全合规） | **国内 AI 助手垂直深耕**（当前默认） |
-| `collab-office` | `backend/app/schemas/collab_office.json` | 1（占位） | 协同办公赛道（待 PR 2.4+ 完善） |
-
-### 跑 AI 助手 demo
+## 跑 AI 助手 demo
 
 ```bash
 # 1. 启动后端
 cd backend && uvicorn app.main:app --reload
 
-# 2. 跑 demo（5 竞品 × 3 维度 → 36 节点 = 15 collect + 15 analyze + 3 write + 3 review，~5-8 分钟）
+# 2. 跑 demo(5 竞品 × 3 维度 → 36 节点 = 15 collect + 15 analyze + 3 write + 3 review,~5-8 分钟)
 python scripts/demo_ai_assistant.py
 
-# 3. 现场追问 demo（只跑 1 个维度）
+# 3. 现场追问 demo(只跑 1 个维度)
 python scripts/demo_ai_assistant.py --dimensions "Agent 能力"
 ```
 
-### 加新垂直 schema
+## 加维度 / 改维度
 
-1. 在 `backend/app/schemas/` 下新建 `<id>.json`（schema_id 用连字符，文件名用下划线，loader 自动转换）
-2. 在 `config.yaml` 把 `active_schema_id` 改成新 ID
-3. 跑 `python scripts/demo_ai_assistant.py`（或写新 demo 脚本）
+1. 改 `backend/app/schemas/ai_assistant.json`(改名、加 group、加 dim、改 keywords/output_type 等)
+2. 重启后端服务
+3. 跑 `python scripts/demo_ai_assistant.py` 验证
 
-详见 `docs/superpowers/specs/2026-06-07-ai-assistant-vertical-design.md`。
+> 历史:本项目曾设计为多 schema 切换(general / ai-assistant / collab-office),2026-06-08 硬收窄到单 ai-assistant 路径。设计文档见 `docs/superpowers/specs/2026-06-08-vertical-hard-lockdown-design.md`。
 
 ## 编码原则
 
