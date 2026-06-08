@@ -74,10 +74,9 @@ class AppConfig(BaseModel):
     dag: DAGConfig
     anysearch: AnySearchConfig = AnySearchConfig()
     llm_pricing: LLMPricingConfig = LLMPricingConfig()
-    active_schema_id: str = Field(
-        default="general",
-        description="当前激活的 schema ID（对应 schemas/<id>.json 文件名）",
-    )
+
+    # 容忍 config.yaml 残留的旧字段(如废弃的 active_schema_id),避免重启即炸
+    model_config = {"extra": "ignore"}
 
 
 def load_config(config_path: str | None = None) -> AppConfig:

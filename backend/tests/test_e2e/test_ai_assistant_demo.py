@@ -8,7 +8,7 @@
 import pytest
 
 from app.models.dag import DAGBlueprint, DAGNode
-from app.schema.loader import load_active_schema
+from app.schema.mvp_defaults import get_active_schema
 
 
 def _build_5x3_blueprint() -> DAGBlueprint:
@@ -67,7 +67,7 @@ def test_5x3_blueprint_all_competitors_covered():
 
 def test_active_schema_has_7_dimensions():
     """当前 active schema = ai-assistant,应有 7 维度。"""
-    schema = load_active_schema()
+    schema = get_active_schema()
     all_dims = [d.name for g in schema.groups for d in g.dimensions]
     assert len(all_dims) == 7
     assert "核心玩法" in all_dims

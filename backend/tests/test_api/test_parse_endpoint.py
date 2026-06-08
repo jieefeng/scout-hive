@@ -8,7 +8,7 @@ from app.main import create_app
 VALID_BLUEPRINT = {
     "nodes": [
         {"id": "c1", "agent": "Collector", "action": "collect",
-         "params": {"target": "A", "dimension": "功能对比"}, "depends_on": []}
+         "params": {"target": "A", "dimension": "核心玩法"}, "depends_on": []}
     ],
     "edges": [],
     "feedback_edges": [],
@@ -33,7 +33,7 @@ async def test_parse_endpoint_success(app):
             success=True,
             output={
                 "competitors": ["A"],
-                "dimensions": ["功能对比"],
+                "dimensions": ["核心玩法"],
                 "dag": VALID_BLUEPRINT,
                 "summary": "OK",
             },
@@ -41,12 +41,12 @@ async def test_parse_endpoint_success(app):
         )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/tasks/parse", json={"message": "分析 A 的功能对比"})
+            resp = await client.post("/api/tasks/parse", json={"message": "分析 A 的核心玩法"})
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["competitors"] == ["A"]
-    assert data["dimensions"] == ["功能对比"]
+    assert data["dimensions"] == ["核心玩法"]
     assert data["summary"] == "OK"
     assert "blueprint" in data
     assert data["blueprint"]["nodes"][0]["id"] == "c1"
@@ -84,7 +84,7 @@ async def test_parse_endpoint_truncates_long_message(app):
         from app.agents.base import AgentResult
         mock_parser.run.return_value = AgentResult(
             success=True,
-            output={"competitors": ["x"], "dimensions": ["功能对比"], "dag": VALID_BLUEPRINT},
+            output={"competitors": ["x"], "dimensions": ["核心玩法"], "dag": VALID_BLUEPRINT},
         )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -123,8 +123,8 @@ async def test_parse_endpoint_returns_422_with_hint_on_json_parse(app):
 
 
 @pytest.mark.asyncio
-async def test_parse_endpoint_accepts_arbitrary_dim(app):
-    """任意 dimension（含 schema 没收录的）都应通过 parse 校验，返回 200。"""
+async def test_parse_endpoint_rejects_non_schema_dim(app):
+    """硬收窄:维度不在 ai-assistant 7 项白名单内 → 422 + dim_not_in_schema。"""
     with patch("app.api.parse._orch") as mock_orch:
         mock_parser = MagicMock()
         mock_parser.run = AsyncMock()
@@ -135,7 +135,7 @@ async def test_parse_endpoint_accepts_arbitrary_dim(app):
             success=True,
             output={
                 "competitors": ["A"],
-                "dimensions": ["协同能力"],
+                "dimensions": ["协同能力"],  # 非白名单维度
                 "dag": VALID_BLUEPRINT,
                 "summary": "OK",
             },
@@ -144,10 +144,42 @@ async def test_parse_endpoint_accepts_arbitrary_dim(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/tasks/parse", json={"message": "对比飞书钉钉企微的协同能力"})
 
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error_type"] == "dim_not_in_schema"
+    assert "协同能力" in detail["invalid_dims"]
+    assert "allowed" in detail
+    assert "核心玩法" in detail["allowed"]
+
+
+@pytest.mark.asyncio
+async def test_parse_endpoint_accepts_schema_dim(app):
+    """硬收窄:白名单内维度正常通过,返回 200。"""
+    with patch("app.api.parse._orch") as mock_orch:
+        mock_parser = MagicMock()
+        mock_parser.run = AsyncMock()
+        mock_parser.retry_with_prompt_hint = AsyncMock()
+        mock_orch.agents = {"TaskParser": mock_parser}
+        from app.agents.base import AgentResult
+        mock_parser.run.return_value = AgentResult(
+            success=True,
+            output={
+                "competitors": ["豆包", "通义"],
+                "dimensions": ["核心玩法", "AI 模型能力"],
+                "dag": VALID_BLUEPRINT,
+                "summary": "OK",
+            },
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/tasks/parse",
+                json={"message": "对比豆包通义的核心玩法和模型能力"},
+            )
+
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["dimensions"] == ["协同能力"]
-    assert "blueprint" in data
+    assert data["dimensions"] == ["核心玩法", "AI 模型能力"]
 
 
 @pytest.fixture

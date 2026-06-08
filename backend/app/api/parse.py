@@ -13,9 +13,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.task_parser import TaskParser
+from app.constants import ALLOWED_DIMENSIONS
 from app.models.dag import DAGBlueprint
 from app.models.task import Competitor, TaskStatus
-from app.schema.mvp_defaults import load_default_schema
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +45,14 @@ def _classify_error(result) -> str:
 async def parse_task_blueprint(
     message: str,
     task_parser: TaskParser,
-    schema: dict,
 ) -> dict[str, Any]:
-    """调 TaskParser 1 次，失败重试 1 次（仅 RETRYABLE_ERRORS）；做严格短路校验。
+    """调 TaskParser 1 次,失败重试 1 次(仅 RETRYABLE_ERRORS);做严格短路校验。
 
     Returns:
         success=True  → {success, blueprint, competitors, dimensions, summary, raw_response}
         success=False → {success, error_type, raw_response, error_message}
+
+    注意:dim_not_in_schema 校验在 HTTP 路由层(parse_task),不在本函数。
     """
     result = await task_parser.run({"message": message})
 
@@ -133,6 +134,7 @@ HINT_BY_ERROR: dict[str, str] = {
     "too_many_competitors": f"竞品数超过上限 {MAX_COMPETITORS}，请精简",
     "json_parse": "LLM 输出不是合法 JSON，请稍后重试或换种描述方式",
     "topology_error": "LLM 生成的 DAG 结构有误，请稍后重试",
+    "dim_not_in_schema": "维度必须在 AI 助手 7 项白名单内,请改用允许的维度名",
 }
 
 HINT_FALLBACK = "请重写需求使其更具体，或使用 POST /api/tasks 直接提交结构化数据"
@@ -150,8 +152,7 @@ async def parse_task(req: ParseRequest):
     message = message[:MESSAGE_MAX_LEN]
 
     task_parser = _orch.agents["TaskParser"]
-    schema = load_default_schema().model_dump()
-    result = await parse_task_blueprint(message, task_parser, schema)
+    result = await parse_task_blueprint(message, task_parser)
 
     if not result["success"]:
         raise HTTPException(
@@ -161,6 +162,20 @@ async def parse_task(req: ParseRequest):
                 "raw_response": result.get("raw_response", ""),
                 "error_message": result.get("error_message", ""),
                 "hint": HINT_BY_ERROR.get(result["error_type"], HINT_FALLBACK),
+            },
+        )
+
+    # 硬收窄:dimensions 必须全部在 ai-assistant 7 项白名单内
+    invalid_dims = [d for d in result["dimensions"] if d not in ALLOWED_DIMENSIONS]
+    if invalid_dims:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_type": "dim_not_in_schema",
+                "invalid_dims": invalid_dims,
+                "allowed": sorted(ALLOWED_DIMENSIONS),
+                "raw_response": result.get("raw_response", ""),
+                "hint": HINT_BY_ERROR["dim_not_in_schema"],
             },
         )
 

@@ -23,20 +23,20 @@ VALID_BLUEPRINT = {
     "nodes": [
         {"id": f"c_{c}_{d}", "agent": "Collector", "action": "collect",
          "params": {"target": c, "dimension": d, "domain": ""}, "depends_on": []}
-        for c in ["A", "B"] for d in ["功能对比"]
+        for c in ["A", "B"] for d in ["核心玩法"]
     ] + [
-        {"id": f"a_{c}_功能对比", "agent": "Analyst", "action": "analyze",
-         "params": {"competitor": c, "dimension": "功能对比"}, "depends_on": [f"c_{c}_功能对比"]}
+        {"id": f"a_{c}_核心玩法", "agent": "Analyst", "action": "analyze",
+         "params": {"competitor": c, "dimension": "核心玩法"}, "depends_on": [f"c_{c}_核心玩法"]}
         for c in ["A", "B"]
     ] + [
-        {"id": f"w_{c}_功能对比", "agent": "Writer", "action": "write",
-         "params": {"competitor": c, "dimension": "功能对比"}, "depends_on": [f"a_{c}_功能对比"]}
+        {"id": f"w_{c}_核心玩法", "agent": "Writer", "action": "write",
+         "params": {"competitor": c, "dimension": "核心玩法"}, "depends_on": [f"a_{c}_核心玩法"]}
         for c in ["A", "B"]
     ],
     "edges": [
-        {"from": f"c_{c}_功能对比", "to": f"a_{c}_功能对比"} for c in ["A", "B"]
+        {"from": f"c_{c}_核心玩法", "to": f"a_{c}_核心玩法"} for c in ["A", "B"]
     ] + [
-        {"from": f"a_{c}_功能对比", "to": f"w_{c}_功能对比"} for c in ["A", "B"]
+        {"from": f"a_{c}_核心玩法", "to": f"w_{c}_核心玩法"} for c in ["A", "B"]
     ],
     "feedback_edges": [],
 }
@@ -49,9 +49,9 @@ async def test_e2e_parse_confirm_executes():
 
     parse_response_content = json.dumps({
         "competitors": ["A", "B"],
-        "dimensions": ["功能对比"],
+        "dimensions": ["核心玩法"],
         "dag": VALID_BLUEPRINT,
-        "summary": "我打算从功能对比维度对比 A 与 B。",
+        "summary": "我打算从核心玩法维度对比 A 与 B。",
     })
 
     with patch("app.api.parse._orch") as mock_orch, \
@@ -86,11 +86,11 @@ async def test_e2e_parse_confirm_executes():
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # 1. parse
-            r1 = await client.post("/api/tasks/parse", json={"message": "分析 A 和 B 的功能对比"})
+            r1 = await client.post("/api/tasks/parse", json={"message": "分析 A 和 B 的核心玩法"})
             assert r1.status_code == 200, r1.text
             parse_data = r1.json()
             assert parse_data["competitors"] == ["A", "B"]
-            assert parse_data["dimensions"] == ["功能对比"]
+            assert parse_data["dimensions"] == ["核心玩法"]
 
             # 2. confirm（蓝图原样回传，模拟用户没编辑）
             r2 = await client.post(

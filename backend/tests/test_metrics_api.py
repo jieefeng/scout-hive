@@ -57,7 +57,10 @@ def test_metrics_endpoint_returns_snapshot(app_with_temp_db):
     assert data["available"] is True
     assert data["total_elapsed_ms"] == 9000  # 1000+5000+3000
     assert data["total_tokens"] == 900  # 3*300
-    assert data["node_count"] == 3
+    # node_count = task.node_states 全量节点数 = 1 竞品 × 7 维(ai-assistant) × 3 agent
+    # 不硬编码 21,改读 task 实际节点数,与 schema 维度数解耦
+    task = sm.get_task(task_id)
+    assert data["node_count"] == len(task.node_states)
     assert len(data["slow_nodes"]) == 3  # top-3
     # 慢节点 top-1 应是 Analyst (5000ms)
     assert data["slow_nodes"][0]["elapsed_ms"] == 5000

@@ -22,12 +22,9 @@ def _parser_with_llm(chat_mock):
     return TaskParser("TaskParser", adapter)
 
 
-def _schema():
-    return {
-        "groups": [
-            {"dimensions": [{"name": "推荐算法"}, {"name": "商业化"}]}
-        ]
-    }
+# 注:历史上 parse_task_blueprint 曾接收 schema 第 3 参做 dim 校验,2026-06-08
+# 硬收窄后 schema 校验上移到 HTTP 路由层(parse.py::parse_task 端点),service
+# 层(本函数)只做基础校验。所以这里所有调用都不再传 schema。
 
 
 @pytest.mark.asyncio
@@ -38,7 +35,7 @@ async def test_parse_success_first_try():
         model="test",
     )))
 
-    result = await parse_task_blueprint("分析 A 的推荐算法", parser, _schema())
+    result = await parse_task_blueprint("分析 A 的推荐算法", parser)
 
     assert result["success"] is True
     assert result["competitors"] == ["A"]
@@ -59,25 +56,26 @@ async def test_parse_retries_on_json_parse():
     ]
     parser = _parser_with_llm(AsyncMock(side_effect=side_effects))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is True
     assert parser.llm.chat.call_count == 2
 
 
 @pytest.mark.asyncio
-async def test_parse_accepts_arbitrary_dim():
-    """任意 dimension（含 schema 没收录的）都应通过 parse 校验。"""
+async def test_parse_blueprint_does_not_validate_dim():
+    """service 层不做 dim 白名单校验(任意 dim 都通过),422 由 HTTP 路由层负责。"""
     parser = _parser_with_llm(AsyncMock(return_value=LLMResponse(
         content='{"competitors": ["A"], "dimensions": ["协同能力"], "dag": ' + str(VALID_DAG).replace("'", '"') + ', "summary": "OK"}',
         model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
+    # service 层把任意 dim 原样塞进 result;调用方(HTTP 路由)负责拦截非白名单 dim
     assert result["success"] is True
     assert result["dimensions"] == ["协同能力"]
-    assert parser.llm.chat.call_count == 1  # 一次成功，无需重试
+    assert parser.llm.chat.call_count == 1  # 一次成功,无需重试
 
 
 @pytest.mark.asyncio
@@ -87,7 +85,7 @@ async def test_parse_fails_after_retry_exhausted():
         content="bad", model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is False
     assert result["error_type"] == "json_parse"
@@ -101,7 +99,7 @@ async def test_parse_empty_competitors():
         model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is False
     assert result["error_type"] == "empty_competitors"
@@ -115,7 +113,7 @@ async def test_parse_too_many_competitors():
         model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is False
     assert result["error_type"] == "too_many_competitors"
@@ -130,7 +128,7 @@ async def test_parse_topology_error():
         model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is False
     assert result["error_type"] == "topology_error"
@@ -143,7 +141,7 @@ def test_retryable_errors_set():
 
 @pytest.mark.asyncio
 async def test_full_raw_response_in_failure():
-    """422 响应 raw_response 应包含完整 LLM JSON（不截断到 RAW_RESPONSE_MAX_LEN=200）。"""
+    """422 响应 raw_response 应包含完整 LLM JSON(不截断到 RAW_RESPONSE_MAX_LEN=200)。"""
     long_raw = (
         '{"competitors": [], "long": "' + ("x" * 500) + '", "dag": '
         + str(VALID_DAG).replace("'", '"')
@@ -154,9 +152,9 @@ async def test_full_raw_response_in_failure():
         model="test",
     )))
 
-    result = await parse_task_blueprint("x", parser, _schema())
+    result = await parse_task_blueprint("x", parser)
 
     assert result["success"] is False
     assert result["error_type"] == "empty_competitors"
-    # 完整 raw_response 应 > 500 字符（如果被截断到 200 字符就 fail）
+    # 完整 raw_response 应 > 500 字符(如果被截断到 200 字符就 fail)
     assert len(result["raw_response"]) > 500

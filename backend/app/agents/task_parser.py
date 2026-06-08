@@ -3,47 +3,58 @@ import uuid
 import logging
 
 from app.agents.base import AgentBase, AgentResult
+from app.constants import ALLOWED_DIMENSIONS
 from app.llm.base import Message
 from app.models.dag import DAGBlueprint, DAGEdge, DAGNode, TaskDAG, TraceabilityConfig
 
 logger = logging.getLogger(__name__)
 
 
+_ALLOWED_DIMS_BLOCK = "\n".join(f"  - {d}" for d in sorted(ALLOWED_DIMENSIONS))
+
+
 class TaskParser(AgentBase):
-    SYSTEM_PROMPT = """你是一个需求分析专家。用户会告诉你想要分析哪些竞品、哪些维度。
+    SYSTEM_PROMPT = f"""你是一个需求分析专家。用户会告诉你想要分析哪些竞品、哪些维度。
 你的任务是：
 1. 理解用户的分析需求
 2. 确定竞品列表和分析维度
 3. 输出一个 DAG 任务蓝图（JSON 格式）
 
 输出格式要求（严格 JSON）：
-{
+{{
   "competitors": ["竞品A", "竞品B"],
-  "dimensions": ["功能对比"],
-  "dag": {
+  "dimensions": ["核心玩法"],
+  "dag": {{
     "nodes": [
-      {"id": "collect_001", "agent": "Collector", "action": "web_search", "params": {"target": "竞品A", "dimension": "功能对比"}, "depends_on": []},
-      {"id": "analyze_001", "agent": "Analyst", "action": "feature_analysis", "params": {}, "depends_on": ["collect_001"]},
-      {"id": "write_001", "agent": "Writer", "action": "generate_report", "params": {}, "depends_on": ["analyze_001"]},
-      {"id": "review_001", "agent": "Reviewer", "action": "quality_check", "params": {}, "depends_on": ["write_001"]}
+      {{"id": "collect_001", "agent": "Collector", "action": "web_search", "params": {{"target": "竞品A", "dimension": "核心玩法"}}, "depends_on": []}},
+      {{"id": "analyze_001", "agent": "Analyst", "action": "feature_analysis", "params": {{}}, "depends_on": ["collect_001"]}},
+      {{"id": "write_001", "agent": "Writer", "action": "generate_report", "params": {{}}, "depends_on": ["analyze_001"]}},
+      {{"id": "review_001", "agent": "Reviewer", "action": "quality_check", "params": {{}}, "depends_on": ["write_001"]}}
     ],
     "edges": [
-      {"from": "collect_001", "to": "analyze_001"},
-      {"from": "analyze_001", "to": "write_001"},
-      {"from": "write_001", "to": "review_001"}
+      {{"from": "collect_001", "to": "analyze_001"}},
+      {{"from": "analyze_001", "to": "write_001"}},
+      {{"from": "write_001", "to": "review_001"}}
     ],
     "feedback_edges": [
-      {"from": "review_001", "to": "write_001", "condition": "review_001.status == 'rejected'", "max_rounds": 3, "escalation": "auto_approve"}
+      {{"from": "review_001", "to": "write_001", "condition": "review_001.status == 'rejected'", "max_rounds": 3, "escalation": "auto_approve"}}
     ]
-  }
-}
+  }}
+}}
 
 注意：
 - 每个竞品的每个维度都需要独立的 Collector 节点
 - DAG 中不能有环（主 edges）
 - 反馈边单独放在 feedback_edges 中
 
-[format_hint 软建议 - 新增]
+[硬约束 - 2026-06-08 AI 助手垂直收窄]
+- 输出的 dimensions 必须严格在以下 AI 助手 7 项白名单内,不接受任何新维度:
+{_ALLOWED_DIMS_BLOCK}
+- 若用户消息涉及白名单外的语义维度(如"功能对比"、"协同能力"等通用词),
+  请映射到最接近的白名单维度,并在 summary 中说明映射关系,不要新建维度。
+- 这是硬约束:超出白名单的 dimensions 会被 API 层 422 拒绝。
+
+[format_hint 软建议]
 - 如果生成的节点含 `Writer` agent（action: "generate_report"），建议在 `params.format_hint` 字段填：
   - "table"（推荐：包含「对比 / 矩阵 / 定价 / 功能 / 指标」等量化词的 dimension）
   - "paragraph"（推荐：包含「体验 / 口碑 / 感受」等定性词的 dimension）

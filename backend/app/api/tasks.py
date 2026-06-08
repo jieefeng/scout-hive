@@ -9,7 +9,7 @@ from app.engine.orchestrator import Orchestrator
 from app.engine.event_bus import EventBus
 from app.models.dag import DAGBlueprint
 from app.models.task import TaskStatus, Competitor
-from app.schema.mvp_defaults import load_default_schema
+from app.constants import ALLOWED_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -92,9 +92,8 @@ def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAG
 
 
 def _load_dimensions() -> list[str]:
-    """从 DEFAULT_SCHEMA 提取所有维度名。"""
-    schema = load_default_schema()
-    return [dim.name for group in schema.groups for dim in group.dimensions]
+    """返回硬收窄后的 ai-assistant 7 维度列表(排序稳定)。"""
+    return sorted(ALLOWED_DIMENSIONS)
 
 
 async def _create_and_run(competitors: list[CompetitorInput], dimensions: list[str]) -> TaskResponse:

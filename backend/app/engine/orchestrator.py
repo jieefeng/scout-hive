@@ -176,15 +176,15 @@ class Orchestrator:
         dag: DAGBlueprint,
         competitors: list[dict],
     ) -> None:
-        """MVP simplified execution path using built-in DEFAULT_SCHEMA.
+        """MVP simplified execution path using the active ai-assistant schema.
 
         Executes DAG nodes concurrently: nodes whose dependencies are all
         completed run in parallel via asyncio.create_task.
         """
         import asyncio as _asyncio
-        from app.schema.mvp_defaults import load_default_schema
+        from app.schema.mvp_defaults import get_active_schema
 
-        schema = load_default_schema()
+        schema = get_active_schema()
         dim_config = _build_dim_config(schema)
         self.sm.update_task_status(task_id, TaskStatus.RUNNING)
 

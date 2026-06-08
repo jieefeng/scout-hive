@@ -67,3 +67,15 @@ async def test_task_parser_multiple_competitors(mock_llm):
     assert result.success is True
     assert len(result.output["competitors"]) == 3
     assert len(result.output["dimensions"]) == 2
+
+
+def test_system_prompt_contains_allowed_dimensions():
+    """硬收窄软约束:SYSTEM_PROMPT 必须包含 ALLOWED_DIMENSIONS 全部 7 项。
+
+    LLM 看到 prompt 里硬列出的白名单后,生成的 dimensions 应优先收敛到这 7 项。
+    """
+    from app.constants import ALLOWED_DIMENSIONS
+
+    prompt = TaskParser.SYSTEM_PROMPT
+    for dim in ALLOWED_DIMENSIONS:
+        assert dim in prompt, f"白名单维度 '{dim}' 缺失于 SYSTEM_PROMPT"
