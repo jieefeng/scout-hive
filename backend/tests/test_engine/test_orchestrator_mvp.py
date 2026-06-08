@@ -73,7 +73,7 @@ async def test_execute_mvp_loads_default_schema():
     mock_writer = MagicMock()
     mock_writer.execute = AsyncMock(return_value=AgentResult(
         success=True,
-        output={"report_html": "<p>竞品A功能对比报告</p>"},
+        output={"report_html": "<p>竞品A核心玩法报告</p>"},
     ))
     mock_writer._build_trace = MagicMock(return_value=MagicMock(model_dump=MagicMock(return_value={})))
 
@@ -113,7 +113,7 @@ async def test_execute_mvp_loads_default_schema():
 
     # Verify report_html was set
     assert sm.get_task(task_id).report_html is not None
-    assert "竞品A功能对比报告" in sm.get_task(task_id).report_html
+    assert "竞品A核心玩法报告" in sm.get_task(task_id).report_html
 
 
 @pytest.mark.asyncio
@@ -155,7 +155,7 @@ async def test_execute_mvp_multi_competitor():
 
     orch = Orchestrator(sm, bus, mock_agents)
     task_id = "test_mvp_002"
-    sm.create_task(task_id, [Competitor(name="竞品A", domain="产品"), Competitor(name="竞品B", domain="产品")], ["功能对比"], {})
+    sm.create_task(task_id, [Competitor(name="竞品A", domain="产品"), Competitor(name="竞品B", domain="产品")], ["核心玩法"], {})
 
     # Blueprint with nodes for two competitors
     blueprint = DAGBlueprint(
@@ -164,42 +164,42 @@ async def test_execute_mvp_multi_competitor():
                 id="collect_A",
                 agent="Collector",
                 action="search",
-                params={"competitor": "竞品A", "dimension": "功能对比", "domain": "产品"},
+                params={"competitor": "竞品A", "dimension": "核心玩法", "domain": "产品"},
                 depends_on=[],
             ),
             DAGNode(
                 id="collect_B",
                 agent="Collector",
                 action="search",
-                params={"competitor": "竞品B", "dimension": "功能对比", "domain": "产品"},
+                params={"competitor": "竞品B", "dimension": "核心玩法", "domain": "产品"},
                 depends_on=[],
             ),
             DAGNode(
                 id="analyze_A",
                 agent="Analyst",
                 action="analyze",
-                params={"competitor": "竞品A", "dimension": "功能对比"},
+                params={"competitor": "竞品A", "dimension": "核心玩法"},
                 depends_on=["collect_A"],
             ),
             DAGNode(
                 id="analyze_B",
                 agent="Analyst",
                 action="analyze",
-                params={"competitor": "竞品B", "dimension": "功能对比"},
+                params={"competitor": "竞品B", "dimension": "核心玩法"},
                 depends_on=["collect_B"],
             ),
             DAGNode(
                 id="write_A",
                 agent="Writer",
                 action="write",
-                params={"competitor": "竞品A", "dimension": "功能对比"},
+                params={"competitor": "竞品A", "dimension": "核心玩法"},
                 depends_on=["analyze_A"],
             ),
             DAGNode(
                 id="write_B",
                 agent="Writer",
                 action="write",
-                params={"competitor": "竞品B", "dimension": "功能对比"},
+                params={"competitor": "竞品B", "dimension": "核心玩法"},
                 depends_on=["analyze_B"],
             ),
         ],

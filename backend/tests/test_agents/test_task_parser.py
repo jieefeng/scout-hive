@@ -16,7 +16,7 @@ def mock_llm():
 async def test_task_parser_returns_valid_dag(mock_llm):
     parser = TaskParser("TaskParser", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
-        content='{"competitors": ["竞品A", "竞品B"], "dimensions": ["功能对比"], "dag": {"nodes": [{"id": "c1", "agent": "Collector", "action": "search", "params": {"target": "竞品A"}, "depends_on": []}], "edges": [], "feedback_edges": []}}',
+        content='{"competitors": ["竞品A", "竞品B"], "dimensions": ["核心玩法"], "dag": {"nodes": [{"id": "c1", "agent": "Collector", "action": "search", "params": {"target": "竞品A"}, "depends_on": []}], "edges": [], "feedback_edges": []}}',
         model="test",
     )
 
@@ -25,7 +25,7 @@ async def test_task_parser_returns_valid_dag(mock_llm):
     assert result.success is True
     assert "competitors" in result.output
     assert result.output["competitors"] == ["竞品A", "竞品B"]
-    assert result.output["dimensions"] == ["功能对比"]
+    assert result.output["dimensions"] == ["核心玩法"]
 
 
 @pytest.mark.asyncio

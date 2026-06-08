@@ -246,13 +246,13 @@ async def test_execute_mvp_full_flow_multi_competitor_multi_dimension():
             Competitor(name="竞品A", domain="feishu.cn"),
             Competitor(name="竞品B", domain="lark.cn"),
         ],
-        ["功能对比", "用户体验"],
+        ["核心玩法", "AI 模型能力"],
         {},
     )
 
     blueprint = _build_mvp_blueprint(
         competitors=[{"name": "竞品A", "domain": "feishu.cn"}, {"name": "竞品B", "domain": "lark.cn"}],
-        dimensions=["功能对比", "用户体验"],
+        dimensions=["核心玩法", "AI 模型能力"],
     )
     await orch.execute_mvp(
         task_id,

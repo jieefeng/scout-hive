@@ -29,7 +29,7 @@ async def test_orchestrator_runs_linear_dag():
         success=True, output={"data": "collected"}, json_valid=True,
     )
     orch = Orchestrator(sm, bus, mock_agents)
-    task = sm.create_task("t001", [Competitor(name="竞品A", domain="产品")], ["功能对比"], {})
+    task = sm.create_task("t001", [Competitor(name="竞品A", domain="产品")], ["核心玩法"], {})
     blueprint = _make_blueprint()
 
     result = await orch.execute_node("t001", blueprint.nodes[0])

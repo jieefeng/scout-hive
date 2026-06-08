@@ -14,7 +14,7 @@ def test_finding_with_quote():
 
 def test_analysis_result_creation():
     result = AnalysisResult(
-        analysis_id="a001", competitor="竞品A", dimension="功能对比",
+        analysis_id="a001", competitor="竞品A", dimension="核心玩法",
         findings=[Finding(
             finding_id="f001", claim="支持多语言", quote="12 languages supported",
             quote_type="exact", source_ref="src_001", chunk_ref="c001",

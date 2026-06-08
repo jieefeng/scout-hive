@@ -8,7 +8,7 @@ from app.main import create_app
 VALID_BLUEPRINT = {
     "nodes": [
         {"id": "c1", "agent": "Collector", "action": "collect",
-         "params": {"target": "A", "dimension": "功能对比"}, "depends_on": []}
+         "params": {"target": "A", "dimension": "核心玩法"}, "depends_on": []}
     ],
     "edges": [],
     "feedback_edges": [],
@@ -34,7 +34,7 @@ async def test_confirm_endpoint_success(app):
         mock_task.task_id = "t-123"
         mock_task.status = "pending"
         mock_task.competitors = []
-        mock_task.dimensions = ["功能对比"]
+        mock_task.dimensions = ["核心玩法"]
         mock_task.node_states = {}
         mock_task.dag_json = {}
         mock_task.created_at = "2026-06-06T00:00:00Z"
@@ -97,7 +97,7 @@ async def test_confirm_uses_user_edited_blueprint(app):
     edited = {
         "nodes": VALID_BLUEPRINT["nodes"] + [
             {"id": "c2", "agent": "Collector", "action": "collect",
-             "params": {"target": "B", "dimension": "功能对比"}, "depends_on": []}
+             "params": {"target": "B", "dimension": "核心玩法"}, "depends_on": []}
         ],
         "edges": [],
         "feedback_edges": [],
@@ -111,7 +111,7 @@ async def test_confirm_uses_user_edited_blueprint(app):
         mock_task.task_id = "t-x"
         mock_task.status = "pending"
         mock_task.competitors = []
-        mock_task.dimensions = ["功能对比"]
+        mock_task.dimensions = ["核心玩法"]
         mock_task.node_states = {}
         mock_task.dag_json = {}
         mock_task.created_at = "2026-06-06T00:00:00Z"

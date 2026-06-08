@@ -27,7 +27,7 @@ def _make_sm_with_task(task_id: str = "task1") -> StateManager:
     sm.create_task(
         task_id=task_id,
         competitors=[Competitor(name="飞书", domain="feishu.cn")],
-        dimensions=["功能对比"],
+        dimensions=["核心玩法"],
         dag_json={"nodes": [{"id": "n1"}], "edges": []},
     )
     return sm
@@ -38,7 +38,7 @@ def test_add_trace_writes_metrics_for_full_trace():
     sm = _make_sm_with_task("task1")
     trace = {
         "trace_id": "t-001",
-        "node_id": "c_飞书_功能对比",
+        "node_id": "c_飞书_核心玩法",
         "agent": "Analyst",
         "timestamp": "2026-06-06T00:00:00Z",
         "input_refs": {},
@@ -60,7 +60,7 @@ def test_add_trace_writes_metrics_for_full_trace():
     assert len(rows) == 1
     row = rows[0]
     assert row["trace_id"] == "t-001"
-    assert row["node_id"] == "c_飞书_功能对比"
+    assert row["node_id"] == "c_飞书_核心玩法"
     assert row["agent"] == "Analyst"
     assert row["timestamp"] == "2026-06-06T00:00:00Z"
     # elapsed_ms 暂用 llm_latency_ms 兜底（已知简化：缺真实节点计时）
@@ -80,7 +80,7 @@ def test_add_trace_skips_metrics_for_minimal_dict():
     """非完整 trace（timeout dict：无 trace_id）应跳过 metrics 写入，不抛异常。"""
     sm = _make_sm_with_task("task2")
     timeout_trace = {
-        "node_id": "c_飞书_功能对比",
+        "node_id": "c_飞书_核心玩法",
         "agent": "Collector",
         "elapsed_ms": 180000,
         "error": "节点执行超时 (180秒)",

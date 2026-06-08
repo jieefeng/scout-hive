@@ -11,7 +11,7 @@ def test_dag_node_creation():
         id="collect_001",
         agent="Collector",
         action="web_search",
-        params={"target": "竞品A", "dimension": "功能对比"},
+        params={"target": "竞品A", "dimension": "核心玩法"},
         depends_on=[],
     )
     assert node.id == "collect_001"
@@ -51,7 +51,7 @@ def test_task_dag_creation():
     dag = TaskDAG(
         task_id="test-001",
         competitors=["竞品A", "竞品B"],
-        dimensions=["功能对比"],
+        dimensions=["核心玩法"],
         dag=DAGBlueprint(
             nodes=[
                 DAGNode(id="a", agent="Collector", action="search", params={}, depends_on=[]),
