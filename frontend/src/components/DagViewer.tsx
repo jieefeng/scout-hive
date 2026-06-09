@@ -111,10 +111,13 @@ const STATUS_ICONS: Record<string, string> = {
   pending: '⏳', running: '🔄', completed: '✅', failed: '❌', skipped: '⏭️',
 };
 
-const NODE_W = 170;
-const NODE_H = 88;
-const COL_GAP = 64;
-const ROW_GAP = 56;
+const NODE_W = 120;
+const NODE_H = 80;
+const NODE_GAP = 12;
+const DIM_GROUP_GAP = 32;
+const SWIMLANE_GAP = 20;
+const SWIMLANE_HEADER = 40;
+const SWIMLANE_PADDING = 16;
 
 interface DagNodeComponentProps {
   data: {
@@ -189,57 +192,100 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
       ? blueprintNodes.map(n => n.id)
       : Object.keys(nodeStates);
 
-    const cols = Math.max(1, Math.ceil(Math.sqrt(allIds.length)));
+    const swimlanes = groupByCompetitor(allIds, dagBlueprint);
 
-    return allIds.map((id, index) => {
-      const status = nodeStates[id] || 'pending';
-      const isSelected = id === selectedNodeId;
+    // Fallback: grid layout when no swimlanes
+    if (swimlanes.length === 0) {
+      const cols = Math.max(1, Math.ceil(Math.sqrt(allIds.length)));
+      return allIds.map((id, index) => {
+        const info = parseNodeInfo(id, dagBlueprint);
+        const status = nodeStates[id] || 'pending';
+        const isSelected = id === selectedNodeId;
+        return {
+          id,
+          type: 'default' as const,
+          position: {
+            x: (NODE_W + NODE_GAP) * (index % cols),
+            y: (NODE_H + NODE_GAP) * Math.floor(index / cols),
+          },
+          data: { label: id, agent: info.agent, dimension: info.dimension, competitor: info.competitor, status },
+          style: {
+            width: NODE_W,
+            height: NODE_H,
+            border: `1px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
+            borderRadius: '12px',
+            padding: '10px',
+            background: isSelected ? '#dbeafe' : 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+            boxShadow: isSelected
+              ? '0 0 0 3px rgba(59,130,246,0.2), 0 4px 12px rgba(0,0,0,0.08)'
+              : '0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)',
+            cursor: 'pointer',
+            transition: 'box-shadow 0.2s, border-color 0.2s',
+          },
+        };
+      });
+    }
 
-      // Extract agent and dimension from node ID or dagBlueprint
-      let agentName = '';
-      let dimensionName = '';
-      if (dagBlueprint?.nodes) {
-        const node = dagBlueprint.nodes.find(n => n.id === id);
-        if (node) {
-          agentName = node.agent || '';
-          dimensionName = node.params?.dimension || '';
+    // Swimlane layout
+    const result: Node[] = [];
+    let currentY = 0;
+
+    for (const lane of swimlanes) {
+      const totalNodes = lane.dimGroups.reduce((sum, g) => sum + g.nodes.length, 0);
+      const totalGaps = Math.max(0, lane.dimGroups.length - 1);
+      const laneWidth = totalNodes * (NODE_W + NODE_GAP) + totalGaps * DIM_GROUP_GAP;
+
+      // Swimlane background node
+      result.push({
+        id: `swimlane-${lane.competitor}`,
+        type: 'swimlane' as any,
+        position: { x: -16, y: currentY },
+        data: { ...lane, laneIndex: swimlanes.indexOf(lane) },
+        style: { width: laneWidth + 32, height: SWIMLANE_HEADER + SWIMLANE_PADDING * 2 + NODE_H },
+        zIndex: -1,
+        selectable: false,
+        draggable: false,
+      } as any);
+
+      // Nodes within the swimlane
+      let nodeIndexInLane = 0;
+      for (const dimGroup of lane.dimGroups) {
+        for (let i = 0; i < dimGroup.nodes.length; i++) {
+          const id = dimGroup.nodes[i];
+          const info = parseNodeInfo(id, dagBlueprint);
+          const status = nodeStates[id] || 'pending';
+          const isSelected = id === selectedNodeId;
+
+          result.push({
+            id,
+            type: 'default' as const,
+            position: {
+              x: nodeIndexInLane * (NODE_W + NODE_GAP),
+              y: currentY + SWIMLANE_HEADER + SWIMLANE_PADDING,
+            },
+            data: { label: id, agent: info.agent, dimension: info.dimension, competitor: info.competitor, status },
+            style: {
+              width: NODE_W,
+              height: NODE_H,
+              border: `1px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
+              borderRadius: '12px',
+              padding: '10px',
+              background: isSelected ? '#dbeafe' : 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: isSelected
+                ? '0 0 0 3px rgba(59,130,246,0.2), 0 4px 12px rgba(0,0,0,0.08)'
+                : '0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)',
+              cursor: 'pointer',
+              transition: 'box-shadow 0.2s, border-color 0.2s',
+            },
+          });
+          nodeIndexInLane++;
         }
+        nodeIndexInLane++; // gap between dimension groups
       }
-      if (!agentName && !dimensionName) {
-        // Fallback: parse from ID like c_飞书_功能对比
-        const prefix = id.split('_')[0];
-        const agentMap: Record<string, string> = { c: 'Collector', a: 'Analyst', w: 'Writer', r: 'Reviewer' };
-        agentName = agentMap[prefix] || '';
-        const parts = id.split('_');
-        dimensionName = parts.length >= 3 ? parts.slice(2).join('_') : '';
-      }
+      currentY += SWIMLANE_HEADER + SWIMLANE_PADDING + NODE_H + SWIMLANE_GAP;
+    }
 
-      return {
-        id,
-        type: 'default',
-        position: {
-          x: (NODE_W + COL_GAP) * (index % cols),
-          y: (NODE_H + ROW_GAP) * Math.floor(index / cols),
-        },
-        data: { label: id, agent: agentName, dimension: dimensionName, status: nodeStates[id] || 'pending' },
-        style: {
-          width: NODE_W,
-          height: NODE_H,
-          border: `2px solid ${isSelected ? '#1d4ed8' : STATUS_COLORS[status] || '#94a3b8'}`,
-          borderRadius: '14px',
-          padding: '8px 10px',
-          background: isSelected ? '#dbeafe' : (STATUS_BG[status] || '#f8fafc'),
-          boxShadow: isSelected
-            ? '0 0 0 3px rgba(59,130,246,0.3), 0 4px 16px rgba(0,0,0,0.12)'
-            : status === 'running'
-              ? '0 0 16px rgba(59,130,246,0.25), 0 2px 8px rgba(0,0,0,0.06)'
-              : '0 2px 8px rgba(0,0,0,0.05)',
-          animation: status === 'running' ? 'dag-glow 2s ease-in-out infinite' : 'none',
-          cursor: 'pointer',
-          transition: 'box-shadow 0.2s, border-color 0.2s, transform 0.15s',
-        },
-      };
-    });
+    return result;
   }, [nodeStates, dagBlueprint, selectedNodeId]);
 
   const edges: Edge[] = useMemo(() => {
