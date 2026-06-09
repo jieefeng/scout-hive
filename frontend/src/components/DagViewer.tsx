@@ -97,16 +97,6 @@ interface DagViewerProps {
   selectedNodeId?: string | null;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#94a3b8', running: '#3b82f6', completed: '#22c55e',
-  failed: '#ef4444', skipped: '#f59e0b',
-};
-
-const STATUS_BG: Record<string, string> = {
-  pending: '#f8fafc', running: '#eff6ff', completed: '#f0fdf4',
-  failed: '#fef2f2', skipped: '#fffbeb',
-};
-
 const STATUS_ICONS: Record<string, string> = {
   pending: '⏳', running: '🔄', completed: '✅', failed: '❌', skipped: '⏭️',
 };
@@ -230,18 +220,19 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
     const result: Node[] = [];
     let currentY = 0;
 
+    let laneIndex = 0;
     for (const lane of swimlanes) {
       const totalNodes = lane.dimGroups.reduce((sum, g) => sum + g.nodes.length, 0);
       const totalGaps = Math.max(0, lane.dimGroups.length - 1);
-      const laneWidth = totalNodes * (NODE_W + NODE_GAP) + totalGaps * DIM_GROUP_GAP;
+      const laneWidth = totalNodes * (NODE_W + NODE_GAP) - NODE_GAP + totalGaps * DIM_GROUP_GAP;
 
       // Swimlane background node
       result.push({
         id: `swimlane-${lane.competitor}`,
         type: 'swimlane' as any,
-        position: { x: -16, y: currentY },
-        data: { ...lane, laneIndex: swimlanes.indexOf(lane) },
-        style: { width: laneWidth + 32, height: SWIMLANE_HEADER + SWIMLANE_PADDING * 2 + NODE_H },
+        position: { x: -SWIMLANE_PADDING, y: currentY },
+        data: { ...lane, laneIndex },
+        style: { width: laneWidth + SWIMLANE_PADDING * 2, height: SWIMLANE_HEADER + SWIMLANE_PADDING * 2 + NODE_H },
         zIndex: -1,
         selectable: false,
         draggable: false,
@@ -283,6 +274,7 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
         nodeIndexInLane++; // gap between dimension groups
       }
       currentY += SWIMLANE_HEADER + SWIMLANE_PADDING + NODE_H + SWIMLANE_GAP;
+      laneIndex++;
     }
 
     return result;
@@ -355,10 +347,7 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
         <Controls showInteractive={false} />
       </ReactFlow>
       <style>{`
-        @keyframes dag-glow {
-          0%, 100% { opacity: 1; box-shadow: 0 0 16px rgba(59,130,246,0.25), 0 2px 8px rgba(0,0,0,0.06); }
-          50% { opacity: 0.85; box-shadow: 0 0 24px rgba(59,130,246,0.4), 0 4px 12px rgba(0,0,0,0.08); }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
       `}</style>
     </div>
   );
