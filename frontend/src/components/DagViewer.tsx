@@ -173,7 +173,45 @@ function DagNodeComponent({ data }: DagNodeComponentProps) {
   );
 }
 
-const NODE_TYPES = { default: DagNodeComponent };
+function SwimlaneBackground({ data }: { data: SwimlaneGroup & { laneIndex: number } }) {
+  const { competitor, color, borderColor, dimGroups } = data;
+  const totalNodes = dimGroups.reduce((sum, g) => sum + g.nodes.length, 0);
+  const totalGaps = Math.max(0, dimGroups.length - 1);
+  const width = totalNodes * (NODE_W + NODE_GAP) - NODE_GAP + totalGaps * DIM_GROUP_GAP;
+  const height = SWIMLANE_HEADER + SWIMLANE_PADDING * 2 + NODE_H;
+
+  return (
+    <div style={{
+      width, height, background: color, border: `1px solid ${borderColor}`,
+      borderRadius: '12px', position: 'relative',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '8px 16px', borderBottom: `1px solid ${borderColor}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: AGENT_ACCENT['Collector'] || '#3b82f6' }} />
+          <strong style={{ fontSize: '13px', color: '#1e293b' }}>{competitor}</strong>
+        </div>
+      </div>
+      {dimGroups.map((group, i) => {
+        const prevNodes = dimGroups.slice(0, i).reduce((s, g) => s + g.nodes.length, 0);
+        const groupX = prevNodes * (NODE_W + NODE_GAP) + i * DIM_GROUP_GAP;
+        return (
+          <div key={group.dimension} style={{
+            position: 'absolute', left: groupX, bottom: '4px',
+            fontSize: '9px', color: '#94a3b8', textAlign: 'center',
+            width: group.nodes.length * (NODE_W + NODE_GAP) - NODE_GAP,
+          }}>
+            {group.dimension}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const NODE_TYPES = { default: DagNodeComponent, swimlane: SwimlaneBackground };
 
 export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selectedNodeId }: DagViewerProps) {
   const nodes: Node[] = useMemo(() => {
