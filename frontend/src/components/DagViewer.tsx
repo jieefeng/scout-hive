@@ -37,6 +37,59 @@ function parseNodeInfo(id: string, dagBlueprint?: DagBlueprint | null): NodeInfo
   };
 }
 
+interface SwimlaneGroup {
+  competitor: string;
+  color: string;          // 泳道底色
+  borderColor: string;    // 泳道边框色
+  dimGroups: {
+    dimension: string;
+    nodes: string[];      // [collector_id, analyst_id, writer_id] 按 C→A→W 排序
+  }[];
+}
+
+const SWIMLANE_COLORS = [
+  { bg: '#eff6ff', border: '#bfdbfe' },  // 蓝
+  { bg: '#f0fdf4', border: '#bbf7d0' },  // 绿
+  { bg: '#fefce8', border: '#fde68a' },  // 黄
+  { bg: '#fdf4ff', border: '#d8b4fe' },  // 紫
+  { bg: '#fef2f2', border: '#fecaca' },  // 红
+];
+
+const AGENT_ORDER = { Collector: 0, Analyst: 1, Writer: 2, Reviewer: 3 };
+
+function groupByCompetitor(nodeIds: string[], dagBlueprint?: DagBlueprint | null): SwimlaneGroup[] {
+  const competitorMap = new Map<string, Map<string, string[]>>();
+
+  for (const id of nodeIds) {
+    const info = parseNodeInfo(id, dagBlueprint);
+    if (!info.competitor) continue;  // 无法解析的节点跳过分组
+
+    if (!competitorMap.has(info.competitor)) {
+      competitorMap.set(info.competitor, new Map());
+    }
+    const dimMap = competitorMap.get(info.competitor)!;
+    if (!dimMap.has(info.dimension)) {
+      dimMap.set(info.dimension, []);
+    }
+    dimMap.get(info.dimension)!.push(id);
+  }
+
+  return Array.from(competitorMap.entries()).map(([competitor, dimMap], index) => ({
+    competitor,
+    color: SWIMLANE_COLORS[index % SWIMLANE_COLORS.length].bg,
+    borderColor: SWIMLANE_COLORS[index % SWIMLANE_COLORS.length].border,
+    dimGroups: Array.from(dimMap.entries()).map(([dimension, ids]) => ({
+      dimension,
+      nodes: ids.sort((a, b) => {
+        const infoA = parseNodeInfo(a, dagBlueprint);
+        const infoB = parseNodeInfo(b, dagBlueprint);
+        return (AGENT_ORDER[infoA.agent as keyof typeof AGENT_ORDER] ?? 99)
+             - (AGENT_ORDER[infoB.agent as keyof typeof AGENT_ORDER] ?? 99);
+      }),
+    })),
+  }));
+}
+
 interface DagViewerProps {
   nodeStates: Record<string, string>;
   dagBlueprint?: DagBlueprint | null;
