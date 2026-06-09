@@ -6,6 +6,37 @@ interface DagEdge { from_node?: string; from?: string; to_node?: string; to?: st
 interface DagNode { id: string; agent: string; action: string; depends_on?: string[]; params?: { dimension?: string } }
 interface DagBlueprint { nodes?: DagNode[]; edges?: DagEdge[]; feedback_edges?: DagEdge[]; }
 
+interface NodeInfo {
+  agent: string;        // "Collector" | "Analyst" | "Writer" | "Reviewer"
+  competitor: string;   // "豆包"
+  dimension: string;    // "核心玩法"
+}
+
+const AGENT_MAP: Record<string, string> = { c: 'Collector', a: 'Analyst', w: 'Writer', r: 'Reviewer' };
+
+function parseNodeInfo(id: string, dagBlueprint?: DagBlueprint | null): NodeInfo {
+  // 优先从 dagBlueprint 读取
+  if (dagBlueprint?.nodes) {
+    const node = dagBlueprint.nodes.find(n => n.id === id);
+    if (node) {
+      const prefix = id.split('_')[0];
+      return {
+        agent: node.agent || AGENT_MAP[prefix] || '',
+        competitor: id.split('_').slice(1, -1).join('_') || '',
+        dimension: node.params?.dimension || '',
+      };
+    }
+  }
+  // 降级：从 ID 解析 — format: prefix_competitor_dimension
+  const parts = id.split('_');
+  const prefix = parts[0];
+  return {
+    agent: AGENT_MAP[prefix] || '',
+    competitor: parts.length >= 3 ? parts.slice(1, -1).join('_') : '',
+    dimension: parts.length >= 3 ? parts.slice(-1)[0] : '',
+  };
+}
+
 interface DagViewerProps {
   nodeStates: Record<string, string>;
   dagBlueprint?: DagBlueprint | null;
