@@ -97,8 +97,14 @@ interface DagViewerProps {
   selectedNodeId?: string | null;
 }
 
-const STATUS_ICONS: Record<string, string> = {
-  pending: '⏳', running: '🔄', completed: '✅', failed: '❌', skipped: '⏭️',
+const STATUS_DOT_COLORS: Record<string, string> = {
+  pending: '#94a3b8', running: '#3b82f6', completed: '#22c55e',
+  failed: '#ef4444', skipped: '#f59e0b',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: '等待', running: '运行中', completed: '完成',
+  failed: '失败', skipped: '跳过',
 };
 
 const NODE_W = 120;
@@ -136,36 +142,41 @@ const AGENT_ACCENT: Record<string, string> = {
 function DagNodeComponent({ data }: DagNodeComponentProps) {
   const { label, agent, dimension, competitor, status } = data;
 
-  const agentMap: Record<string, string> = { c: "Collector", a: "Analyst", w: "Writer", r: "Reviewer" };
-  const prefix = label.split("_")[0];
+  const agentMap: Record<string, string> = { c: 'Collector', a: 'Analyst', w: 'Writer', r: 'Reviewer' };
+  const prefix = label.split('_')[0];
   const agentName = agentMap[prefix] || agent || label;
 
-  const parts = label.split("_");
-  const competitorName = competitor || (parts.length >= 2 ? parts[1] : "");
-  const dimensionName = dimension || (parts.length >= 3 ? parts.slice(2).join("_") : "");
-
   const accent = AGENT_ACCENT[agentName] || '#64748b';
+  const dotColor = STATUS_DOT_COLORS[status || 'pending'] || '#94a3b8';
+  const statusLabel = STATUS_LABELS[status || 'pending'] || '等待';
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
       <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
-        <div style={{ fontSize: '1.3rem', marginBottom: '3px' }}>{(status && STATUS_ICONS[status]) || '⏳'}</div>
-        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1e293b', marginBottom: '3px', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '6px' }}>
+          <span style={{
+            width: '8px', height: '8px', borderRadius: '50%', background: dotColor,
+            animation: status === 'running' ? 'pulse 1.5s infinite' : 'none',
+          }} />
+          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 500 }}>{statusLabel}</span>
+        </div>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}>
           {AGENT_LABELS[agentName] || agentName}
         </div>
-        {dimensionName && (
+        {dimension && (
           <div style={{
-            fontSize: '0.6rem', color: accent, maxWidth: '150px',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto',
-            fontWeight: 600,
-          }}>{dimensionName}</div>
+            fontSize: '9px', color: accent, fontWeight: 600,
+            background: `${accent}15`, padding: '2px 8px', borderRadius: '4px',
+            display: 'inline-block', maxWidth: '100px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{dimension}</div>
         )}
-        {competitorName && (
+        {competitor && (
           <div style={{
-            fontSize: '0.55rem', color: '#94a3b8', maxWidth: '150px',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '0 auto',
-          }}>{competitorName}</div>
+            fontSize: '8px', color: '#94a3b8', marginTop: '4px',
+            maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{competitor}</div>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
