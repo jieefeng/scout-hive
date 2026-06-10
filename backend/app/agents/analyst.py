@@ -163,7 +163,7 @@ min_sources 降级规则（分析时使用）：
                 if isinstance(item, dict):
                     url = item.get("source_url", "")
                     content = item.get("content", "")
-                    if url and content:
+                    if url and content and "未能采集到" not in content:
                         count += 1
             return count
         # 兼容旧格式（单 dict）
