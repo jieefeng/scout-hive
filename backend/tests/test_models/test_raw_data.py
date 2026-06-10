@@ -1,31 +1,38 @@
 import pytest
-from app.models.raw_data import RawData, Chunk, RawDataMetadata
+from app.models.raw_data import RawData
 
 
-def test_chunk_creation():
-    chunk = Chunk(chunk_id="c001", text="基础版 ¥99/月", selector="body > div.pricing", plain_text_snapshot="基础版 ¥99/月")
-    assert chunk.chunk_id == "c001"
-    assert chunk.selector == "body > div.pricing"
-
-
-def test_raw_data_with_content_hash():
+def test_raw_data_creation():
     data = RawData(
-        data_id="d001", source_type="web", source_url="https://example.com",
-        content="测试内容", content_hash="abc123",
-        metadata=RawDataMetadata(fetched_by="collector_001", reliability="high", content_type="pricing_page", status="success"),
-        chunks=[Chunk(chunk_id="c001", text="测试内容", plain_text_snapshot="测试内容")],
+        source_url="https://www.feishu.cn/",
+        title="飞书官网",
+        description="飞书官方网站",
+        content="飞书完整内容...",
     )
-    assert data.content_hash == "abc123"
-    assert data.metadata.status == "success"
-    assert len(data.chunks) == 1
+    assert data.source_url == "https://www.feishu.cn/"
+    assert data.title == "飞书官网"
+    assert data.description == "飞书官方网站"
+    assert data.content == "飞书完整内容..."
 
 
-def test_raw_data_failed_status():
+def test_raw_data_defaults():
+    data = RawData(source_url="https://example.com", content="some content")
+    assert data.title == ""
+    assert data.description == ""
+
+
+def test_raw_data_from_api_dict():
+    """模拟 AnySearch API 返回结构直接构造 RawData"""
+    api_result = {
+        "url": "https://www.feishu.cn/",
+        "title": "飞书官网",
+        "description": "飞书官方网站",
+        "content": "飞书完整内容...",
+    }
     data = RawData(
-        data_id="d002", source_type="web", source_url="https://broken.com",
-        content="", content_hash="",
-        metadata=RawDataMetadata(fetched_by="collector_001", reliability="low", content_type="unknown", status="failed", error_message="HTTP 404"),
-        chunks=[],
+        source_url=api_result["url"],
+        title=api_result["title"],
+        description=api_result["description"],
+        content=api_result["content"],
     )
-    assert data.metadata.status == "failed"
-    assert data.metadata.error_message == "HTTP 404"
+    assert data.source_url == api_result["url"]
