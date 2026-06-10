@@ -128,9 +128,13 @@ min_sources 降级规则（分析时使用）：
         trace_sources = []
         # Build lookup from Collector's sources (passed via input_data["sources"])
         collector_src_map = {s["source_id"]: s for s in sources if isinstance(s, dict) and s.get("source_id")}
+        step_counter = 1  # 全局递增步骤编号
         for f in parsed.get("findings", []):
             for step in f.get("reasoning_chain", []):
-                reasoning_chain.append(step)
+                # 重新编号，保证全局递增
+                step_copy = {**step, "step": step_counter}
+                reasoning_chain.append(step_copy)
+                step_counter += 1
             if f.get("source_ref"):
                 # Look up real URL from Collector's sources
                 matched = collector_src_map.get(f["source_ref"], {})
@@ -147,13 +151,23 @@ min_sources 降级规则（分析时使用）：
         # 强制 reasoning_chain：若为空（enforce_rc=True）则触发重试
         return await self._enforce_reasoning_chain(input_data, agent_result)
 
-    def _count_sources(self, raw_data: dict, sources: list | None = None) -> int:
+    def _count_sources(self, raw_data, sources: list | None = None) -> int:
         """计算独立来源的数量。优先用 orchestrator 传入的 sources，否则从 raw_data 推断。"""
         # 优先：orchestrator 从 Collector 的 AgentResult.sources 传入
         if sources and isinstance(sources, list):
             return len(sources)
-        # 兜底：raw_data 中有实际内容（source_url 非空且 content 非空）视为 1 条来源
-        if raw_data and isinstance(raw_data, dict):
+        # raw_data 现在是 list[dict]，每个 dict 是一个 RawData
+        if isinstance(raw_data, list):
+            count = 0
+            for item in raw_data:
+                if isinstance(item, dict):
+                    url = item.get("source_url", "")
+                    content = item.get("content", "")
+                    if url and content:
+                        count += 1
+            return count
+        # 兼容旧格式（单 dict）
+        if isinstance(raw_data, dict):
             source_url = raw_data.get("source_url", "")
             content = raw_data.get("content", "")
             if source_url and content and "未能采集到" not in content:
