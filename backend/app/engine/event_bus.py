@@ -1,17 +1,14 @@
 import asyncio
 from typing import Callable, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Event(BaseModel):
     type: str  # node_started | node_completed | node_failed | task_completed | review_feedback
     task_id: str
     node_id: str = ""
-    data: dict | list = {}
-
-
-MAX_HISTORY = 500
+    data: dict | list = Field(default_factory=dict)
 
 
 MAX_HISTORY = 500
