@@ -22,7 +22,7 @@ class TraceRecord(BaseModel):
     agent: str
     timestamp: str | None = None
     input_refs: dict = Field(default_factory=dict)
-    output: dict = Field(default_factory=dict)
+    output: dict | list = Field(default_factory=dict)
     reasoning_chain: list[dict] = Field(default_factory=list)
     sources: list[TraceSource] = Field(default_factory=list)
     llm_metadata: LLMMetadata = Field(default_factory=LLMMetadata)

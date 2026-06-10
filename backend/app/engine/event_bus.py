@@ -8,7 +8,13 @@ class Event(BaseModel):
     type: str  # node_started | node_completed | node_failed | task_completed | review_feedback
     task_id: str
     node_id: str = ""
-    data: dict = {}
+    data: dict | list = {}
+
+
+MAX_HISTORY = 500
+
+
+MAX_HISTORY = 500
 
 
 class EventBus:
@@ -23,6 +29,8 @@ class EventBus:
 
     async def publish(self, event: Event):
         self._history.append(event)
+        if len(self._history) > MAX_HISTORY:
+            self._history = self._history[-MAX_HISTORY:]
         for callback in self._subscribers.get(event.type, []):
             if asyncio.iscoroutinefunction(callback):
                 await callback(event)

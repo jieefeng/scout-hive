@@ -13,17 +13,39 @@ def mock_llm():
 
 
 @pytest.mark.asyncio
-async def test_collector_returns_raw_data(mock_llm):
+async def test_collector_returns_raw_data_list(mock_llm):
+    """Collector returns a list of RawData dicts from AnySearch results."""
     collector = Collector("Collector", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
         content='{"search_queries": ["douyin features"], "target_urls": [], "strategy": "web_search"}',
         model="test",
     )
 
-    result = await collector.run({"target": "douyin", "dimension": "features"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": [
+                {"url": "https://a.com", "title": "A", "description": "desc A", "content": "content A"},
+                {"url": "https://b.com", "title": "B", "description": "desc B", "content": "content B"},
+            ]}
+        }
+        mock_client.post.return_value = mock_response
 
-    assert result.success is True
-    assert "data_id" in result.output or "content" in result.output
+        result = await collector.run({"target": "douyin", "dimension": "features"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
+        assert len(result.output) == 2
+        assert result.output[0]["source_url"] == "https://a.com"
+        assert result.output[0]["title"] == "A"
+        assert result.output[0]["description"] == "desc A"
+        assert result.output[0]["content"] == "content A"
+        assert result.output[1]["source_url"] == "https://b.com"
+        assert result.output[1]["title"] == "B"
 
 
 @pytest.mark.asyncio
@@ -34,10 +56,24 @@ async def test_collector_with_llm_strategy(mock_llm):
         model="test",
     )
 
-    result = await collector.run({"target": "kuaishou", "dimension": "AI recommendation"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": [
+                {"url": "https://example.com", "title": "Example", "description": "desc", "content": "content"},
+            ]}
+        }
+        mock_client.post.return_value = mock_response
 
-    assert result.success is True
-    assert len(result.sources) >= 0
+        result = await collector.run({"target": "kuaishou", "dimension": "AI recommendation"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
+        assert len(result.sources) >= 0
 
 
 @pytest.mark.asyncio
@@ -46,9 +82,21 @@ async def test_collector_fallback_on_parse_error(mock_llm):
     collector = Collector("Collector", mock_llm)
     mock_llm.chat.return_value = LLMResponse(content="INVALID JSON {{{", model="test")
 
-    result = await collector.run({"target": "competitorX", "dimension": "features"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
 
-    assert result.success is True
+        result = await collector.run({"target": "competitorX", "dimension": "features"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
 
 
 @pytest.mark.asyncio
@@ -72,7 +120,18 @@ async def test_collector_injects_domain_into_system_prompt(mock_llm):
         model="test",
     )
 
-    await collector.run({"target": "feishu", "dimension": "docs", "domain": "feishu.cn"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
+
+        await collector.run({"target": "feishu", "dimension": "docs", "domain": "feishu.cn"})
 
     # Verify chat was called
     assert mock_llm.chat.await_count >= 1
@@ -93,7 +152,18 @@ async def test_collector_injects_domain_hint_into_user_message(mock_llm):
         model="test",
     )
 
-    await collector.run({"target": "feishu", "dimension": "docs", "domain": "feishu.cn"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
+
+        await collector.run({"target": "feishu", "dimension": "docs", "domain": "feishu.cn"})
 
     assert mock_llm.chat.await_count >= 1
     call_kwargs = mock_llm.chat.call_args
@@ -112,9 +182,21 @@ async def test_collector_works_without_domain(mock_llm):
         model="test",
     )
 
-    result = await collector.run({"target": "douyin", "dimension": "features"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
 
-    assert result.success is True
+        result = await collector.run({"target": "douyin", "dimension": "features"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
 
 
 @pytest.mark.asyncio
@@ -127,9 +209,20 @@ async def test_collector_search_query_includes_site_constraint(mock_llm):
         model="test",
     )
 
-    result = await collector.run({"target": "feishu", "dimension": "documentation", "domain": "feishu.cn"})
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
 
-    assert result.success is True
+        result = await collector.run({"target": "feishu", "dimension": "documentation", "domain": "feishu.cn"})
+
+        assert result.success is True
 
 
 @pytest.mark.asyncio
@@ -172,14 +265,15 @@ async def test_collector_search_uses_anysearch_api(mock_llm):
         first_call = mock_client.post.call_args_list[0]
         assert "api.anysearch.com/v1/search" in str(first_call)
 
-        # Verify result success and sources were populated
+        # Verify result success and output is a list
         assert result.success is True
+        assert isinstance(result.output, list)
         assert result.sources
 
 
 @pytest.mark.asyncio
-async def test_collector_uses_search_content_when_fetch_fails(mock_llm):
-    """When direct HTTP fetch fails, Collector uses content from search results."""
+async def test_collector_passes_through_search_content(mock_llm):
+    """Collector passes through content from search results directly without fetching."""
     collector = Collector("Collector", mock_llm)
     mock_llm.chat.return_value = LLMResponse(
         content='{"search_queries": ["feishu"]}',
@@ -190,7 +284,6 @@ async def test_collector_uses_search_content_when_fetch_fails(mock_llm):
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        # AnySearch 返回结构: {"code": 0, "message": "success", "data": {"results": [...]}}
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -214,9 +307,10 @@ async def test_collector_uses_search_content_when_fetch_fails(mock_llm):
 
         assert mock_client.post.call_count == 1  # Only search call, no extract
         assert result.success is True
-        output = result.output
-        assert "content" in output
-        assert "飞书完整正文内容 from search" in output["content"]
+        assert isinstance(result.output, list)
+        assert len(result.output) == 1
+        assert result.output[0]["content"] == "飞书完整正文内容 from search"
+        assert result.output[0]["source_url"] == "https://www.feishu.cn/"
 
 
 class TestExtractDomain:
@@ -314,3 +408,31 @@ async def test_collector_sources_include_title(mock_llm):
         assert result.success is True
         assert result.sources
         assert result.sources[0]["title"] == "飞书官网"
+
+
+@pytest.mark.asyncio
+async def test_collector_returns_fallback_when_no_results(mock_llm):
+    """When AnySearch returns no results, Collector returns a fallback RawData."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["unknown thing"], "target_urls": [], "strategy": "web_search"}',
+        model="test",
+    )
+
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 0, "message": "success",
+            "data": {"results": []}
+        }
+        mock_client.post.return_value = mock_response
+
+        result = await collector.run({"target": "unknown", "dimension": "features"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
+        assert len(result.output) == 1
+        assert "未能采集到" in result.output[0]["content"]

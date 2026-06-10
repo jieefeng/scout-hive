@@ -11,7 +11,7 @@ from app.models.trace import LLMMetadata, TraceRecord
 
 class AgentResult(BaseModel):
     success: bool
-    output: dict = Field(default_factory=dict)
+    output: dict | list = Field(default_factory=dict)
     raw_response: str = ""
     json_valid: bool = True
     error_type: str | None = None  # json_parse | token_limit | network | unknown | None
@@ -145,7 +145,7 @@ class AgentBase(ABC):
         self,
         node_id: str,
         input_data: dict,
-        output: dict,
+        output: dict | list,
         elapsed_ms: int,
         llm_response: LLMResponse | None = None,
         error: str | None = None,

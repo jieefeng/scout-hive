@@ -1,15 +1,12 @@
-import hashlib
 import json
 import logging
 import uuid
 
 import httpx
-import trafilatura
 
 from app.agents.base import AgentBase, AgentResult
-from app.cleaner.html_cleaner import clean_html
 from app.llm.base import Message
-from app.models.raw_data import Chunk, RawData, RawDataMetadata
+from app.models.raw_data import RawData
 
 logger = logging.getLogger(__name__)
 
@@ -33,30 +30,6 @@ class Collector(AgentBase):
   "target_urls": ["https://..."],
   "strategy": "web_search"
 }"""
-
-    # 已知反爬严格的站点，直接跳过 HTTP 抓取，用 search snippet 兜底
-    BLOCKED_DOMAINS = {"g2.com", "capterra.com", "alternativeto.net", "trustpilot.com"}
-
-    async def _fetch_url(self, url: str) -> str:
-        """Fetch a URL and extract main text content using trafilatura."""
-        from urllib.parse import urlparse
-        hostname = urlparse(url).hostname or ""
-        if any(hostname.endswith(d) for d in self.BLOCKED_DOMAINS):
-            logger.info(f"Skipping known blocked domain: {url}")
-            return ""
-        try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-                resp = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                })
-                resp.raise_for_status()
-                text = trafilatura.extract(resp.text, include_comments=False, include_tables=True)
-                return text or ""
-        except Exception as e:
-            logger.warning(f"Failed to fetch {url}: {e}")
-            return ""
 
     async def _search_anysearch(self, query: str, max_results: int = 5) -> list[dict]:
         """Search using AnySearch REST API and return results with URLs and snippets."""
@@ -96,9 +69,9 @@ class Collector(AgentBase):
             for r in results_list:
                 results.append({
                     "url": r.get("url", ""),
-                    "snippet": r.get("description", ""),
-                    "content": r.get("content", ""),
                     "title": r.get("title", ""),
+                    "description": r.get("description", ""),
+                    "content": r.get("content", ""),
                 })
 
         except httpx.HTTPStatusError as e:
@@ -173,13 +146,6 @@ class Collector(AgentBase):
             }
 
         search_queries = strategy.get("search_queries", [f"{target} {dimension}"])
-        target_urls = strategy.get("target_urls", [])
-
-        # 如果输入是完整 URL（而非纯域名），直接加入采集目标
-        if website and "/" in website:
-            url = website if website.startswith("http") else "https://" + website
-            if url not in target_urls:
-                target_urls.insert(0, url)
 
         # Phase 1: Search for relevant URLs via AnySearch API
         all_search_results = []
@@ -189,77 +155,41 @@ class Collector(AgentBase):
         for query in search_queries[:3]:
             results = await self._search_anysearch(query, max_results=max_results)
             all_search_results.extend(results)
-            for r in results:
-                if r["url"] not in target_urls:
-                    target_urls.append(r["url"])
 
-        logger.info(f"[Collector] Search done: {len(all_search_results)} results, {len(target_urls)} URLs in {int((_time.monotonic() - start_time) * 1000)}ms")
+        logger.info(f"[Collector] Search done: {len(all_search_results)} results in {int((_time.monotonic() - start_time) * 1000)}ms")
 
-        # Phase 2: Fetch and extract content from top URLs (direct HTTP with trafilatura)
-        collected_texts = []
+        # Phase 2: Map search results directly to RawData list
+        raw_data_list = []
         sources = []
-        # Build a map of url -> search_result for fallback
-        url_to_search_result = {r["url"]: r for r in all_search_results}
+        for r in all_search_results:
+            url = r.get("url", "")
+            if not url:
+                continue
+            raw_data_list.append(RawData(
+                source_url=url,
+                title=r.get("title", ""),
+                description=r.get("description", ""),
+                content=r.get("content", ""),
+            ).model_dump())
+            sources.append({
+                "source_id": str(uuid.uuid4()),
+                "type": "web",
+                "url": url,
+                "title": r.get("title", ""),
+                "snippet": r.get("description", "")[:300],
+            })
 
-        for url in target_urls[:5]:  # limit to 5 URLs
-            # Use content from search result if available
-            search_result = url_to_search_result.get(url, {})
-            text = search_result.get("content", "")
-            if not text:
-                # Fallback to direct HTTP fetch
-                text = await self._fetch_url(url)
-            if text:
-                collected_texts.append(text)
-                sources.append({
-                    "source_id": str(uuid.uuid4()),
-                    "type": "web",
-                    "url": url,
-                    "title": search_result.get("title", ""),
-                    "snippet": text[:300],
-                })
+        # Fallback: if no results collected
+        if not raw_data_list:
+            raw_data_list = [RawData(
+                source_url=f"https://search.example.com?q={target}",
+                title="",
+                description="",
+                content=f"未能采集到关于 {target} 的 {dimension} 相关内容。",
+            ).model_dump()]
 
-        # Fallback: if no real content collected, use search snippets
-        if not collected_texts and all_search_results:
-            for r in all_search_results[:3]:
-                collected_texts.append(r.get("snippet", ""))
-                sources.append({
-                    "source_id": str(uuid.uuid4()),
-                    "type": "web",
-                    "url": r.get("url", ""),
-                    "title": r.get("title", ""),
-                    "snippet": r.get("snippet", "")[:300],
-                })
-
-        logger.info(f"[Collector] Fetch done: {len(collected_texts)} texts collected in {int((_time.monotonic() - start_time) * 1000)}ms")
-
-        raw_content = "\n\n---\n\n".join(collected_texts) if collected_texts else f"未能采集到关于 {target} 的 {dimension} 相关内容。"
-        content_hash = hashlib.md5(raw_content.encode()).hexdigest()
-        clean_result = clean_html(raw_content)
-
-        raw_data = RawData(
-            data_id=str(uuid.uuid4()),
-            source_type="web",
-            source_url=target_urls[0] if target_urls else f"https://search.example.com?q={target}",
-            content=clean_result.text,
-            content_hash=content_hash,
-            metadata=RawDataMetadata(
-                fetched_by=self.name,
-                reliability="medium" if collected_texts else "low",
-                content_type="search_result",
-                status="complete" if collected_texts else "partial",
-            ),
-            chunks=[
-                Chunk(
-                    chunk_id=str(uuid.uuid4()),
-                    text=clean_result.text,
-                    plain_text_snapshot=clean_result.text,
-                )
-            ],
-        )
         # Build reasoning chain for trace display
         elapsed_s = round(_time.monotonic() - start_time, 1)
-        attempted_urls = min(len(target_urls), 5)
-        success_rate = round(len(collected_texts) / attempted_urls * 100) if attempted_urls else 0
         reasoning_chain = [
             {
                 "step": 1,
@@ -270,14 +200,14 @@ class Collector(AgentBase):
             {
                 "step": 2,
                 "thought": f"采集结果：共搜索到 {len(all_search_results)} 条结果，"
-                           f"成功采集 {len(collected_texts)} 个网页\n"
-                           f"成功率: {success_rate}% | 耗时: {elapsed_s}s",
+                           f"映射为 {len(raw_data_list)} 条 RawData\n"
+                           f"耗时: {elapsed_s}s",
                 "type": "summary",
             },
         ]
 
         return AgentResult(
-            success=True, output=raw_data.model_dump(), llm_response=llm_response,
+            success=True, output=raw_data_list, llm_response=llm_response,
             sources=sources,
             reasoning_chain=reasoning_chain,
         )
