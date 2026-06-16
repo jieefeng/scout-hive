@@ -46,7 +46,7 @@ def test_add_trace_writes_metrics_for_full_trace():
         "reasoning_chain": [{"step": 1, "thought": "..."}],
         "sources": [],
         "llm_metadata": {
-            "model": "qwen3.6-flash-2026-04-16",
+            "model": "qwen3.7-max-2026-05-17",
             "tokens_used": 1000,
             "latency_ms": 2000,
         },
@@ -138,7 +138,7 @@ def test_add_trace_multiple_writes_accumulate():
             "reasoning_chain": [{"step": 1}],
             "sources": [],
             "llm_metadata": {
-                "model": "qwen3.6-flash-2026-04-16",
+                "model": "qwen3.7-max-2026-05-17",
                 "tokens_used": 100 * (i + 1),
                 "latency_ms": 100 * (i + 1),
             },

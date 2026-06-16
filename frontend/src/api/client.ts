@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5010';
+export const API_BASE = 'http://localhost:5010';
 const WS_URL = 'ws://localhost:5010/ws';
 
 export interface SlowNode {
@@ -58,12 +58,22 @@ export async function fetchTaskMetrics(taskId: string): Promise<TaskMetricsSnaps
   return resp.json();
 }
 
-export async function createTask(competitors: Array<{name: string, domain: string}>) {
+export async function fetchDimensions(): Promise<string[]> {
+  const resp = await fetch(`${API_BASE}/api/tasks/dimensions`);
+  if (!resp.ok) throw new Error(`fetchDimensions failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function createTask(competitors: Array<{name: string, domain: string}>, dimensions?: string[]) {
   const resp = await fetch(`${API_BASE}/api/tasks/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ competitors }),
+    body: JSON.stringify({ competitors, dimensions }),
   });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({}));
+    throw new Error(`createTask failed: ${resp.status} ${JSON.stringify(detail)}`);
+  }
   return resp.json();
 }
 

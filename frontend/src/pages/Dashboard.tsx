@@ -1,13 +1,34 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTaskStore } from '../stores/taskStore';
-import { createTask } from '../api/client';
+import { createTask, fetchDimensions } from '../api/client';
 
 interface CompetitorEntry {
   id: string;
   name: string;
   domain: string;
+  category?: string;
 }
+
+/** 预置竞品品类 */
+const CATEGORIES = ['AI 助手', '办公协作', '搜索引擎', '其他'] as const;
+
+/** 预置国内 AI 助手竞品列表（按品类分组） */
+const DEFAULT_COMPETITORS: { name: string; domain: string; category: string }[] = [
+  { name: '豆包', domain: 'doubao.com', category: 'AI 助手' },
+  { name: '通义千问', domain: 'tongyi.aliyun.com', category: 'AI 助手' },
+  { name: 'Kimi', domain: 'kimi.moonshot.cn', category: 'AI 助手' },
+  { name: '文小言', domain: 'yiyan.baidu.com', category: 'AI 助手' },
+  { name: '智谱清言', domain: 'chatglm.cn', category: 'AI 助手' },
+  { name: '讯飞星火', domain: 'xinghuo.xfyun.cn', category: 'AI 助手' },
+  { name: '百川智能', domain: 'baichuan-ai.com', category: 'AI 助手' },
+  { name: '秘塔 AI 搜索', domain: 'metaso.cn', category: '搜索引擎' },
+];
+
+/** 默认勾选的竞品名称（前 5 个，与 demo 保持一致） */
+const DEFAULT_SELECTED_NAMES = new Set(
+  DEFAULT_COMPETITORS.slice(0, 5).map(c => c.name)
+);
 
 /** 从输入中提取纯域名（去掉协议、路径、端口） */
 function extractDomain(input: string): string {
@@ -33,15 +54,28 @@ function isValidWebsite(input: string): boolean {
 }
 
 export default function Dashboard() {
-  const { tasks, loading, loadTasks, deleteTask } = useTaskStore();
-  const [competitors, setCompetitors] = useState<CompetitorEntry[]>([
-    { id: '1', name: '', domain: '' },
-  ]);
+  const tasks = useTaskStore(s => s.tasks);
+  const loading = useTaskStore(s => s.loading);
+  const loadTasks = useTaskStore(s => s.loadTasks);
+  const deleteTask = useTaskStore(s => s.deleteTask);
+  const [selectedDefaults, setSelectedDefaults] = useState<Set<string>>(new Set(DEFAULT_SELECTED_NAMES));
+  const [customCompetitors, setCustomCompetitors] = useState<CompetitorEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [nlpMessage, setNlpMessage] = useState('');
+  const [dimensions, setDimensions] = useState<string[]>([]);
+  const [selectedDimensions, setSelectedDimensions] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  useEffect(() => {
+    fetchDimensions()
+      .then(dims => {
+        setDimensions(dims);
+        setSelectedDimensions(new Set(dims)); // 默认全选
+      })
+      .catch(err => console.error('获取维度列表失败:', err));
+  }, []);
 
   const goToNlpParse = () => {
     const trimmed = nlpMessage.trim();
@@ -52,17 +86,54 @@ export default function Dashboard() {
     }
   };
 
-  const addCompetitor = () => {
-    setCompetitors(prev => [...prev, { id: crypto.randomUUID(), name: '', domain: '' }]);
+  const toggleDefaultCompetitor = (name: string) => {
+    setSelectedDefaults(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
   };
 
-
-  const updateCompetitor = (id: string, field: 'name' | 'domain', value: string) => {
-    setCompetitors(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  const addCustomCompetitor = () => {
+    setCustomCompetitors(prev => [...prev, { id: crypto.randomUUID(), name: '', domain: '' }]);
   };
 
-  const validCompetitors = competitors.filter(c => c.name.trim() && isValidWebsite(c.domain.trim()));
-  const canCreate = validCompetitors.length > 0;
+  const updateCustomCompetitor = (id: string, field: 'name' | 'domain', value: string) => {
+    setCustomCompetitors(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  };
+
+  /** 合并默认勾选 + 自定义输入的竞品 */
+  const allCompetitors: CompetitorEntry[] = [
+    ...DEFAULT_COMPETITORS
+      .filter(c => selectedDefaults.has(c.name))
+      .map(c => ({ id: `default_${c.name}`, name: c.name, domain: c.domain, category: c.category })),
+    ...customCompetitors,
+  ];
+
+  const validCompetitors = allCompetitors.filter(c => c.name.trim() && isValidWebsite(c.domain.trim()));
+  const canCreate = validCompetitors.length > 0 && selectedDimensions.size > 0;
+
+  const toggleDimension = (dim: string) => {
+    setSelectedDimensions(prev => {
+      const next = new Set(prev);
+      if (next.has(dim)) {
+        next.delete(dim);
+      } else {
+        next.add(dim);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllDimensions = () => {
+    setSelectedDimensions(prev =>
+      prev.size === dimensions.length ? new Set() : new Set(dimensions)
+    );
+  };
 
   const handleDelete = async (taskId: string) => {
     if (!confirm('确定要删除该任务吗？')) return;
@@ -78,8 +149,12 @@ export default function Dashboard() {
     if (!canCreate) return;
     setCreating(true);
     try {
-      const task = await createTask(validCompetitors.map(c => ({ name: c.name.trim(), domain: c.domain.trim() })));
-      setCompetitors([{ id: '1', name: '', domain: '' }]);
+      const task = await createTask(
+        validCompetitors.map(c => ({ name: c.name.trim(), domain: c.domain.trim() })),
+        Array.from(selectedDimensions)
+      );
+      setSelectedDefaults(new Set(DEFAULT_SELECTED_NAMES));
+      setCustomCompetitors([]);
       await loadTasks();
       navigate(`/task/${task.task_id}`);
     } catch (err) {
@@ -113,30 +188,115 @@ export default function Dashboard() {
       <div style={{ marginBottom: '2rem', padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', background: '#fafafa' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: '0.75rem' }}>新建分析任务</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {competitors.map(comp => (
+          {/* 默认竞品多选列表 */}
+          <div style={{ padding: '1rem', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <span style={{ fontWeight: 500 }}>选择竞品</span>
+              <button
+                onClick={() => setSelectedDefaults(prev =>
+                  prev.size === DEFAULT_COMPETITORS.length ? new Set() : new Set(DEFAULT_COMPETITORS.map(c => c.name))
+                )}
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: 'none', border: '1px solid #1976d2', color: '#1976d2', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                {selectedDefaults.size === DEFAULT_COMPETITORS.length ? '取消全选' : '全选'}
+              </button>
+            </div>
+            {/* 按品类分组展示 */}
+            {CATEGORIES.map(cat => {
+              const groupComps = DEFAULT_COMPETITORS.filter(c => c.category === cat);
+              if (groupComps.length === 0) return null;
+              return (
+                <div key={cat} style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '0.4rem', borderBottom: '1px solid #e0e0e0', paddingBottom: '0.2rem' }}>
+                    {cat}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {groupComps.map(comp => (
+                      <label
+                        key={comp.name}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.4rem',
+                          padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
+                          background: selectedDefaults.has(comp.name) ? '#e3f2fd' : '#f5f5f5',
+                          border: selectedDefaults.has(comp.name) ? '1px solid #1976d2' : '1px solid #e0e0e0',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDefaults.has(comp.name)}
+                          onChange={() => toggleDefaultCompetitor(comp.name)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem' }}>{comp.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 自定义竞品输入 */}
+          {customCompetitors.map(comp => (
             <div key={comp.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
                 type="text"
                 value={comp.name}
-                onChange={e => updateCompetitor(comp.id, 'name', e.target.value)}
+                onChange={e => updateCustomCompetitor(comp.id, 'name', e.target.value)}
                 placeholder="竞品名称，例如：飞书"
                 style={{ flex: 1, padding: '0.75rem', fontSize: '1rem', border: '1px solid #ccc', borderRadius: '6px', outline: 'none' }}
               />
               <input
                 type="text"
                 value={comp.domain}
-                onChange={e => updateCompetitor(comp.id, 'domain', e.target.value)}
-                placeholder="域名或网址，例如：feishu.cn 或 https://github.com/user/repo"
+                onChange={e => updateCustomCompetitor(comp.id, 'domain', e.target.value)}
+                placeholder="域名或网址，例如：feishu.cn"
                 style={{ flex: 1, padding: '0.75rem', fontSize: '1rem', border: comp.domain && !isValidWebsite(comp.domain) ? '1px solid #e53935' : '1px solid #ccc', borderRadius: '6px', outline: 'none' }}
               />
             </div>
           ))}
           <button
-            onClick={addCompetitor}
+            onClick={addCustomCompetitor}
             style={{ alignSelf: 'flex-start', padding: '0.5rem 1rem', fontSize: '0.9rem', background: '#fff', color: '#1976d2', border: '1px solid #1976d2', borderRadius: '6px', cursor: 'pointer' }}
           >
-            + 添加竞品
+            + 添加自定义竞品
           </button>
+
+          {dimensions.length > 0 && (
+            <div style={{ marginTop: '0.5rem', padding: '1rem', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <span style={{ fontWeight: 500 }}>分析维度</span>
+                <button
+                  onClick={toggleAllDimensions}
+                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', background: 'none', border: '1px solid #1976d2', color: '#1976d2', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  {selectedDimensions.size === dimensions.length ? '取消全选' : '全选'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {dimensions.map(dim => (
+                  <label
+                    key={dim}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer',
+                      background: selectedDimensions.has(dim) ? '#e3f2fd' : '#f5f5f5',
+                      border: selectedDimensions.has(dim) ? '1px solid #1976d2' : '1px solid #e0e0e0',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedDimensions.has(dim)}
+                      onChange={() => toggleDimension(dim)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>{dim}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button
             onClick={handleCreate}
             disabled={creating || !canCreate}

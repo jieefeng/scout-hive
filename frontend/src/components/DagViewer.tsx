@@ -153,7 +153,7 @@ function DagNodeComponent({ data }: DagNodeComponentProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
-      <div style={{ textAlign: 'center', lineHeight: 1.2 }}>
+      <div style={{ textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '6px' }}>
           <span style={{
             width: '8px', height: '8px', borderRadius: '50%', background: dotColor,
@@ -193,7 +193,7 @@ function SwimlaneBackground({ data }: { data: SwimlaneGroup & { laneIndex: numbe
 
   return (
     <div style={{
-      width, height, background: color, border: `1px solid ${borderColor}`,
+      width, height, boxSizing: 'border-box', background: color, border: `1px solid ${borderColor}`,
       borderRadius: '12px', position: 'relative',
     }}>
       <div style={{
@@ -207,12 +207,14 @@ function SwimlaneBackground({ data }: { data: SwimlaneGroup & { laneIndex: numbe
       </div>
       {dimGroups.map((group, i) => {
         const prevNodes = dimGroups.slice(0, i).reduce((s, g) => s + g.nodes.length, 0);
-        const groupX = prevNodes * (NODE_W + NODE_GAP) + i * DIM_GROUP_GAP;
+        const prevGaps = i;  // only gaps BEFORE this group (no trailing gap)
+        const groupX = prevNodes * (NODE_W + NODE_GAP) + prevGaps * DIM_GROUP_GAP;
         return (
           <div key={group.dimension} style={{
             position: 'absolute', left: groupX, bottom: '4px',
             fontSize: '9px', color: '#94a3b8', textAlign: 'center',
             width: group.nodes.length * (NODE_W + NODE_GAP) - NODE_GAP,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {group.dimension}
           </div>
@@ -251,6 +253,7 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
           style: {
             width: NODE_W,
             height: NODE_H,
+            boxSizing: 'border-box',
             border: `1px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
             borderRadius: '12px',
             padding: '10px',
@@ -288,8 +291,9 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
       } as any);
 
       // Nodes within the swimlane
-      let nodeIndexInLane = 0;
-      for (const dimGroup of lane.dimGroups) {
+      let groupOffset = 0;
+      for (let gi = 0; gi < lane.dimGroups.length; gi++) {
+        const dimGroup = lane.dimGroups[gi];
         for (let i = 0; i < dimGroup.nodes.length; i++) {
           const id = dimGroup.nodes[i];
           const info = parseNodeInfo(id, dagBlueprint);
@@ -300,13 +304,14 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
             id,
             type: 'default' as const,
             position: {
-              x: nodeIndexInLane * (NODE_W + NODE_GAP),
+              x: groupOffset + i * (NODE_W + NODE_GAP),
               y: currentY + SWIMLANE_HEADER + SWIMLANE_PADDING,
             },
             data: { label: id, agent: info.agent, dimension: info.dimension, competitor: info.competitor, status },
             style: {
               width: NODE_W,
               height: NODE_H,
+              boxSizing: 'border-box',
               border: `1px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
               borderRadius: '12px',
               padding: '10px',
@@ -318,9 +323,10 @@ export default function DagViewer({ nodeStates, dagBlueprint, onNodeClick, selec
               transition: 'box-shadow 0.2s, border-color 0.2s',
             },
           });
-          nodeIndexInLane++;
         }
-        nodeIndexInLane++; // gap between dimension groups
+        // advance offset by this group's width; add inter-group gap only between groups
+        groupOffset += dimGroup.nodes.length * (NODE_W + NODE_GAP);
+        if (gi < lane.dimGroups.length - 1) groupOffset += DIM_GROUP_GAP;
       }
       currentY += SWIMLANE_HEADER + SWIMLANE_PADDING + NODE_H + SWIMLANE_GAP;
       laneIndex++;

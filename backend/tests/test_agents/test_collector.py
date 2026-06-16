@@ -436,3 +436,32 @@ async def test_collector_returns_fallback_when_no_results(mock_llm):
         assert isinstance(result.output, list)
         assert len(result.output) == 1
         assert "未能采集到" in result.output[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_collector_returns_fallback_on_api_error(mock_llm):
+    """When AnySearch returns a non-zero code (e.g. quota exhausted), Collector returns fallback."""
+    collector = Collector("Collector", mock_llm)
+    mock_llm.chat.return_value = LLMResponse(
+        content='{"search_queries": ["test query"], "target_urls": [], "strategy": "web_search"}',
+        model="test",
+    )
+
+    with patch("app.agents.collector.httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "code": 40201,
+            "message": "The anonymous IP's daily free quota has been exhausted.",
+            "data": {"api_key": "as_sk_test", "quota_limit": 300, "quota_used": 300},
+        }
+        mock_client.post.return_value = mock_response
+
+        result = await collector.run({"target": "test", "dimension": "features"})
+
+        assert result.success is True
+        assert isinstance(result.output, list)
+        assert len(result.output) == 1
+        assert "未能采集到" in result.output[0]["content"]

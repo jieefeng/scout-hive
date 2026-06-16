@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTaskStore } from '../stores/taskStore';
+import { API_BASE } from '../api/client';
 import DagViewer from '../components/DagViewer';
 import AgentDetail from '../components/AgentDetail';
 import TraceBrowser from '../components/TraceBrowser';
@@ -31,7 +32,11 @@ const TABS: Array<{ key: TabKey; label: string; icon: string }> = [
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const { currentTask, loading, loadTask, metrics, loadMetrics } = useTaskStore();
+  const currentTask = useTaskStore(s => s.currentTask);
+  const loading = useTaskStore(s => s.loading);
+  const loadTask = useTaskStore(s => s.loadTask);
+  const metrics = useTaskStore(s => s.metrics);
+  const loadMetrics = useTaskStore(s => s.loadMetrics);
   const [selectedTrace, setSelectedTrace] = useState<TraceRecord | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -178,7 +183,7 @@ export default function TaskDetail() {
                 <button
                   onClick={async () => {
                     if (!taskId) return;
-                    await fetch(`/api/tasks/${taskId}/stop`, { method: "POST" });
+                    await fetch(`${API_BASE}/api/tasks/${taskId}/stop`, { method: "POST" });
                     loadTask(taskId);
                   }}
                   style={{
@@ -370,45 +375,58 @@ export default function TaskDetail() {
       {/* ── Agent Detail Modal ── */}
       {panelOpen && (
         <>
+          {/* Backdrop */}
           <div
             onClick={closePanel}
             style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(6px)',
+              background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(12px)',
               zIndex: 99, animation: 'modalFadeIn 0.2s ease',
             }}
           />
+          {/* Modal */}
           <div style={{
             position: 'fixed', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 'min(920px, 92vw)', maxHeight: '85vh',
-            background: '#fff', borderRadius: '18px',
-            boxShadow: '0 25px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.05)',
+            width: 'min(1400px, 95vw)', maxHeight: '92vh',
+            background: '#fff', borderRadius: '20px',
+            boxShadow: '0 32px 100px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.06), 0 0 80px rgba(99,102,241,0.06)',
             zIndex: 100, overflow: 'hidden', display: 'flex', flexDirection: 'column',
-            animation: 'modalSlideIn 0.25s ease',
+            animation: 'modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           }}>
+            {/* Header bar */}
             <div style={{
-              padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
+              padding: '14px 24px', borderBottom: '1px solid #e2e8f0',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              position: 'sticky', top: 0,
-              background: 'linear-gradient(180deg, #fafbfc, #f8fafc)',
-              borderRadius: '18px 18px 0 0', zIndex: 1,
+              background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)',
+              borderRadius: '20px 20px 0 0', zIndex: 1,
+              flexShrink: 0,
             }}>
-              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>节点详情</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  width: '6px', height: '22px', borderRadius: '3px',
+                  background: 'linear-gradient(180deg, #6366f1, #8b5cf6)',
+                }} />
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#1e293b', letterSpacing: '-0.01em' }}>
+                  节点详情
+                </h2>
+              </div>
               <button
                 onClick={closePanel}
                 style={{
-                  width: '32px', height: '32px', borderRadius: '8px',
-                  background: '#f1f5f9', border: '1px solid #e2e8f0', cursor: 'pointer',
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: '#fff', border: '1px solid #e2e8f0', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1rem', color: '#64748b', lineHeight: 1, transition: 'all 0.15s',
+                  fontSize: '1.1rem', color: '#64748b', lineHeight: 1, transition: 'all 0.15s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#1e293b'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = '#fecaca'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
               >
                 ✕
               </button>
             </div>
+            {/* Content */}
             <div style={{ overflow: 'auto', flex: 1 }}>
               <AgentDetail
                 trace={selectedTrace}
@@ -421,7 +439,7 @@ export default function TaskDetail() {
 
       <style>{`
         @keyframes modalFadeIn { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes modalSlideIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+        @keyframes modalSlideIn { from { opacity: 0; transform: translate(-50%, -48%) scale(0.94) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
         @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
       `}</style>
     </div>

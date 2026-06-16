@@ -60,7 +60,7 @@
 ```yaml
 # backend/app/config.yaml (新增节点)
 llm_pricing:
-  "qwen3.6-flash-2026-04-16": {in: 0.0008, out: 0.002}   # CNY / 1k tokens
+  "qwen3.7-max-2026-05-17": {in: 0.0008, out: 0.002}   # CNY / 1k tokens
   "claude-opus-4-8":           {in: 0.015,  out: 0.075}
   "gpt-5.2":                   {in: 0.005,  out: 0.015}
   default:                      {in: 0.001,  out: 0.002}

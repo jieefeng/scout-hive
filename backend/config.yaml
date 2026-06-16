@@ -8,7 +8,7 @@ llm:
   adapters:
     bailian:
       type: bailian
-      model: qwen3.6-flash-2026-04-16
+      model: qwen3.7-max-2026-05-17
       api_key: ${DASHSCOPE_API_KEY}
   agent_bindings:
     TaskParser: bailian
@@ -23,14 +23,14 @@ dag:
   max_retries: 3
 
 anysearch:
-  api_key: ""
+  api_key: "as_sk_04c72d357372a6f05f10a67d2d7a8d93"
   search_timeout: 15
   extract_timeout: 30
   max_results_per_query: 5
 
 # LLM 定价（CNY / 1k tokens，按 model 区分；未匹配 model 走 default）
 llm_pricing:
-  "qwen3.6-flash-2026-04-16": {in: 0.0008, out: 0.002}
+  "qwen3.7-max-2026-05-17": {in: 0.0008, out: 0.002}
   "claude-opus-4-8":          {in: 0.015,  out: 0.075}
   "gpt-5.2":                  {in: 0.005,  out: 0.015}
   default:                     {in: 0.001,  out: 0.002}

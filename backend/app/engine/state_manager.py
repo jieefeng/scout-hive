@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import time
+import threading
 from pathlib import Path
 
 from app.models.task import Task, TaskStatus, NodeStatus, Competitor
@@ -24,6 +25,7 @@ class StateManager:
         path = db_path or str(self._db_path)
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
@@ -222,25 +224,28 @@ class StateManager:
         self._conn.commit()
 
     def update_node_status(self, task_id: str, node_id: str, status: NodeStatus):
-        row = self._conn.execute("SELECT node_states FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
-        if row:
-            node_states = json.loads(row["node_states"])
-            node_states[node_id] = status.value
-            self._conn.execute("UPDATE tasks SET node_states = ? WHERE task_id = ?",
-                               (json.dumps(node_states), task_id))
-            self._conn.commit()
+        with self._lock:
+            row = self._conn.execute("SELECT node_states FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if row:
+                node_states = json.loads(row["node_states"])
+                node_states[node_id] = status.value
+                self._conn.execute("UPDATE tasks SET node_states = ? WHERE task_id = ?",
+                                   (json.dumps(node_states), task_id))
+                self._conn.commit()
 
     def add_trace(self, task_id: str, trace: dict):
-        row = self._conn.execute("SELECT traces FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT traces FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if row:
+                traces = json.loads(row["traces"] or "[]")
+                traces.append(trace)
+                self._conn.execute(
+                    "UPDATE tasks SET traces = ? WHERE task_id = ?",
+                    (json.dumps(traces), task_id),
+                )
+                self._touch(task_id)
+                self._conn.commit()
         if row:
-            traces = json.loads(row["traces"] or "[]")
-            traces.append(trace)
-            self._conn.execute(
-                "UPDATE tasks SET traces = ? WHERE task_id = ?",
-                (json.dumps(traces), task_id),
-            )
-            self._touch(task_id)
-            self._conn.commit()
             self._maybe_persist_trace_metrics(task_id, trace)
 
     # trace_metrics 自动落盘（add_trace 钩子）——
@@ -290,16 +295,17 @@ class StateManager:
         self.save_trace_metrics(metrics)
 
     def add_review(self, task_id: str, review: dict):
-        row = self._conn.execute("SELECT reviews FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
-        if row:
-            reviews = json.loads(row["reviews"] or "[]")
-            reviews.append(review)
-            self._conn.execute(
-                "UPDATE tasks SET reviews = ? WHERE task_id = ?",
-                (json.dumps(reviews), task_id),
-            )
-            self._touch(task_id)
-            self._conn.commit()
+        with self._lock:
+            row = self._conn.execute("SELECT reviews FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if row:
+                reviews = json.loads(row["reviews"] or "[]")
+                reviews.append(review)
+                self._conn.execute(
+                    "UPDATE tasks SET reviews = ? WHERE task_id = ?",
+                    (json.dumps(reviews), task_id),
+                )
+                self._touch(task_id)
+                self._conn.commit()
 
     def get_reviews(self, task_id: str) -> list[dict]:
         """Get all reviews for a task."""

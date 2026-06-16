@@ -58,11 +58,18 @@ class Collector(AgentBase):
                 data = resp.json()
 
             # AnySearch 返回结构: {'code': 0, 'message': 'success', 'data': {'results': [...]}}
+            api_code = data.get("code")
+            if api_code != 0:
+                logger.error(
+                    f"AnySearch API error for query '{query}': "
+                    f"code={api_code}, message={data.get('message', 'unknown')}"
+                )
+                return []
+
             results_list = data.get("data", {}).get("results", [])
             if not results_list:
                 logger.warning(
-                    f"AnySearch returned no results for query: {query}, "
-                    f"response: {data}"
+                    f"AnySearch returned no results for query: {query}"
                 )
                 return []
 

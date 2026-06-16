@@ -45,7 +45,13 @@ class Reviewer(AgentBase):
         ]
         llm_response = await self.chat(messages)
         try:
-            parsed = json.loads(llm_response.content)
+            import re
+            content = llm_response.content.strip()
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*\n?", "", content)
+                content = re.sub(r"\n?```\s*$", "", content)
+            parsed = json.loads(content)
         except json.JSONDecodeError as e:
             return AgentResult(
                 success=False,

@@ -65,7 +65,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   addWSEvent: async (event: WSEvent) => {
-    set((state) => ({ wsEvents: [...state.wsEvents, event] }));
+    const MAX_WS_EVENTS = 100;
+    set((state) => ({
+      wsEvents: [...state.wsEvents.slice(-MAX_WS_EVENTS + 1), event],
+    }));
     // 节点完成 → 节流重拉 metrics
     if (event.type === 'node_completed' && event.task_id) {
       await get().loadMetrics(event.task_id);

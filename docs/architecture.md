@@ -69,7 +69,7 @@ flowchart LR
 | Agent | 职责 | 输入 | 输出 | 是否调 LLM |
 |-------|------|------|------|-----------|
 | TaskParser | 自然语言 → DAG 蓝图 | `{message: str}` | `{competitors, dimensions, dag, summary}` | ✅ |
-| Collector | 公开信息采集 | `{target, domain, dimension}` | `RawData{chunks: [...], sources: [...]}` | 部分（query 生成） |
+| Collector | 公开信息采集 | `{target, domain, dimension}` | `list[RawData{source_url, title, description, content}]` | 部分（query 生成） |
 | Analyst | 单维度分析 | `{competitor, dimension, raw_data}` | `AnalysisResult{findings: [...]}` | ✅ |
 | Writer | 撰写报告 | `{competitor, dimension, analysis}` | `WriterResult{report_html}` | ✅ |
 | Reviewer | 质检 | `{competitor, dimension, report, analysis}` | `ReviewResult{checks, passed, feedback}` | ✅ |
@@ -149,6 +149,12 @@ flowchart LR
 **为什么**：
 - `POST /api/tasks`（结构化）：调试与已有竞品清单
 - `POST /api/tasks/parse` → `/confirm`（NLP）：用户自然语言驱动
+
+**API 端点**：
+- `GET /api/tasks/dimensions`：返回当前白名单维度列表，供前端表单使用
+- `POST /api/tasks`：创建任务，支持可选 `dimensions` 参数（不传则使用全部白名单维度）
+- `POST /api/tasks/parse`：自然语言解析，生成 DAG 蓝图
+- `POST /api/tasks/parse/confirm`：确认蓝图并启动执行
 
 **权衡**：维护 2 套入口 = 双倍测试成本。决策：parse 路径的维度强制在 `DEFAULT_SCHEMA` 内，不允许 LLM 自由发挥。
 

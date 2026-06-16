@@ -33,6 +33,7 @@ class CompetitorInput(BaseModel):
 
 class CreateTaskRequest(BaseModel):
     competitors: list[CompetitorInput]
+    dimensions: list[str] | None = None  # 可选，不传则使用全部白名单维度
 
 
 class DebugTaskRequest(BaseModel):
@@ -58,12 +59,13 @@ class TaskResponse(BaseModel):
 
 
 def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAGBlueprint:
-    """构建 Collector → Analyst → Writer DAG 蓝图。"""
+    """构建 Collector → Analyst → Writer DAG 蓝图。
+
+    每个竞品内部 C→A→W 串行，竞品之间无依赖、完全并发。
+    """
     nodes = []
     edges = []
-    prev_comp_end = None
     for comp in competitors:
-        comp_writers = []
         for dim in dimensions:
             c_id = f"c_{comp.name}_{dim}"
             a_id = f"a_{comp.name}_{dim}"
@@ -73,13 +75,6 @@ def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAG
             nodes.append({"id": w_id, "agent": "Writer", "action": "write", "params": {"competitor": comp.name, "dimension": dim}})
             edges.append({"from_node": c_id, "to_node": a_id})
             edges.append({"from_node": a_id, "to_node": w_id})
-            comp_writers.append(w_id)
-        if prev_comp_end:
-            for w_id in prev_comp_end:
-                for dim in dimensions:
-                    c_id = f"c_{comp.name}_{dim}"
-                    edges.append({"from_node": w_id, "to_node": c_id})
-        prev_comp_end = comp_writers
 
     from collections import defaultdict
     dep_map: dict[str, list[str]] = defaultdict(list)
@@ -94,6 +89,12 @@ def _build_dag(competitors: list[CompetitorInput], dimensions: list[str]) -> DAG
 def _load_dimensions() -> list[str]:
     """返回硬收窄后的 ai-assistant 7 维度列表(排序稳定)。"""
     return sorted(ALLOWED_DIMENSIONS)
+
+
+@router.get("/dimensions", response_model=list[str])
+async def get_dimensions():
+    """返回当前白名单维度列表，供前端表单使用。"""
+    return _load_dimensions()
 
 
 async def _create_and_run(competitors: list[CompetitorInput], dimensions: list[str]) -> TaskResponse:
@@ -124,7 +125,23 @@ async def _create_and_run(competitors: list[CompetitorInput], dimensions: list[s
 @router.post("/", response_model=TaskResponse)
 async def create_task(req: CreateTaskRequest):
     competitors = [CompetitorInput(name=c.name, website=c.website) for c in req.competitors]
-    dimensions = _load_dimensions()
+
+    # 校验 dimensions：如果传了，必须全部在白名单内；没传则用全部
+    if req.dimensions is not None:
+        invalid_dims = [d for d in req.dimensions if d not in ALLOWED_DIMENSIONS]
+        if invalid_dims:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_type": "dim_not_in_schema",
+                    "invalid_dims": invalid_dims,
+                    "allowed": sorted(ALLOWED_DIMENSIONS),
+                },
+            )
+        dimensions = req.dimensions
+    else:
+        dimensions = _load_dimensions()
+
     return await _create_and_run(competitors, dimensions)
 
 

@@ -48,18 +48,16 @@ class Orchestrator:
         result = await agent.run(node.params, node_id=node.id)
 
         if result.success:
-            self.sm.update_node_status(task_id, node.id, NodeStatus.COMPLETED)
             self.sm.add_trace(task_id, result.trace.model_dump() if result.trace else {})
             if node.agent == "Writer" and result.output.get("report_html"):
                 self.sm.set_report(task_id, result.output["report_html"])
             if node.agent == "Reviewer" and result.output:
                 self.sm.add_review(task_id, result.output)
-                # Set REJECTED if verdict is rejected, otherwise COMPLETED
                 verdict = result.output.get("verdict", "")
-                if verdict == "rejected":
-                    self.sm.update_node_status(task_id, node.id, NodeStatus.REJECTED)
-                else:
-                    self.sm.update_node_status(task_id, node.id, NodeStatus.COMPLETED)
+                status = NodeStatus.REJECTED if verdict == "rejected" else NodeStatus.COMPLETED
+                self.sm.update_node_status(task_id, node.id, status)
+            else:
+                self.sm.update_node_status(task_id, node.id, NodeStatus.COMPLETED)
             await self.bus.publish(Event(type="node_completed", task_id=task_id, node_id=node.id, data=result.output))
         else:
             self.sm.update_node_status(task_id, node.id, NodeStatus.FAILED)
